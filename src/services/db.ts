@@ -1,15 +1,21 @@
 import { 
   collection, 
   getDocs, 
+  getDoc,
+  setDoc,
   addDoc, 
   updateDoc, 
   deleteDoc, 
   doc, 
   query, 
-  orderBy 
+  orderBy,
+  where
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Publication, BlogPost, Project, GalleryImage, ContactMessage } from '../types';
+import { 
+  Publication, BlogPost, Project, GalleryImage, ContactMessage,
+  UserProfile, Transaction, Comment 
+} from '../types';
 
 // ==========================================
 // DEFAULT / SEED DATA
@@ -25,7 +31,8 @@ const DEFAULT_PUBLICATIONS: Publication[] = [
     year: 2021,
     link: 'http://www.ijsi.org.ng/index.php/ijsi/article/view/100',
     description: 'This study investigates the complex linkages between juvenile delinquency and academic outcomes in secondary institutions inside Uyo metropolis, analyzing modern structural solutions for family therapy and school adjustments.',
-    dateAdded: '2026-01-15'
+    dateAdded: '2026-01-15',
+    isPaid: false
   },
   {
     id: 'pub2',
@@ -36,7 +43,10 @@ const DEFAULT_PUBLICATIONS: Publication[] = [
     year: 2023,
     link: '',
     description: 'A comprehensive academic textbook detailing theoretical frameworks on urban misconduct, cyber-deviancy, community systems, and local security policies in Nigeria for senior researchers and graduates.',
-    dateAdded: '2026-02-10'
+    dateAdded: '2026-02-10',
+    isPaid: true,
+    price: 12500,
+    downloadUrl: 'https://arxiv.org/pdf/criminology_foundations_ebere_okorie.pdf'
   },
   {
     id: 'pub3',
@@ -47,7 +57,8 @@ const DEFAULT_PUBLICATIONS: Publication[] = [
     year: 2022,
     link: '',
     description: 'An empirical appraisal of neighborhood security frameworks and public-relations patterns used by the Nigerian Police Force to facilitate grassroots information sharing and local policing in modern South-Southern Nigeria.',
-    dateAdded: '2026-03-05'
+    dateAdded: '2026-03-05',
+    isPaid: false
   },
   {
     id: 'pub4',
@@ -58,7 +69,10 @@ const DEFAULT_PUBLICATIONS: Publication[] = [
     year: 2020,
     link: '',
     description: 'Analyzes demographic traits of juvenile offenders housed in safety centers and correctional shelters in Akwa Ibom State, mapping delinquency trends back to localized social dislocations.',
-    dateAdded: '2026-04-12'
+    dateAdded: '2026-04-12',
+    isPaid: true,
+    price: 4500,
+    downloadUrl: 'https://arxiv.org/pdf/demographic_factors_juvenile_okorie.pdf'
   }
 ];
 
@@ -555,17 +569,245 @@ export const updateMessageReadStatus = async (id: string, read: boolean): Promis
 
 export const deleteMessage = async (id: string): Promise<void> => {
   try {
-    if (id.startsWith('local_')) throw new Error("Local item");
-    const docRef = doc(db, 'messages', id);
-    await deleteDoc(docRef);
-    
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'messages', id);
+      await deleteDoc(docRef);
+    }
     const local: ContactMessage[] = JSON.parse(localStorage.getItem('okorie_messages') || '[]');
     const updated = local.filter(m => m.id !== id);
     localStorage.setItem('okorie_messages', JSON.stringify(updated));
   } catch (error) {
-    console.warn("Firestore deleteMessage failed, performing local:", error);
+    console.warn("Firestore deleteMessage failed, performing local operation:", error);
     const local: ContactMessage[] = JSON.parse(localStorage.getItem('okorie_messages') || '[]');
     const updated = local.filter(m => m.id !== id);
     localStorage.setItem('okorie_messages', JSON.stringify(updated));
+  }
+};
+
+// ==========================================
+// USER PROFILE OPERATIONS
+// ==========================================
+
+export const fetchUserProfile = async (uid: string): Promise<UserProfile | null> => {
+  try {
+    const docRef = doc(db, 'users', uid);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as UserProfile;
+    }
+    // Fallback to local storage profiles
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const user = localUsers.find(u => u.uid === uid);
+    return user || null;
+  } catch (error) {
+    console.warn("Firestore fetchUserProfile failed, falling back to local storage:", error);
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const user = localUsers.find(u => u.uid === uid);
+    return user || null;
+  }
+};
+
+export const createUserProfile = async (
+  uid: string, 
+  email: string, 
+  displayName: string, 
+  isAdmin: boolean = false
+): Promise<UserProfile> => {
+  const newProfile: UserProfile = {
+    uid,
+    email,
+    displayName,
+    likedPublications: [],
+    purchasedPublications: [],
+    createdAt: new Date().toISOString(),
+    isAdmin: isAdmin || email === "younggist212@gmail.com" || email === "admin@okorie.edu.ng"
+  };
+
+  try {
+    const docRef = doc(db, 'users', uid);
+    await setDoc(docRef, newProfile);
+    
+    // Sync to local
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const updated = [newProfile, ...localUsers.filter(u => u.uid !== uid)];
+    localStorage.setItem('okorie_users', JSON.stringify(updated));
+    return newProfile;
+  } catch (error) {
+    console.warn("Firestore createUserProfile failed, performing local operation:", error);
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const updated = [newProfile, ...localUsers.filter(u => u.uid !== uid)];
+    localStorage.setItem('okorie_users', JSON.stringify(updated));
+    return newProfile;
+  }
+};
+
+export const updateUserProfile = async (profile: UserProfile): Promise<void> => {
+  try {
+    const docRef = doc(db, 'users', profile.uid);
+    await setDoc(docRef, profile, { merge: true });
+    
+    // Sync to local
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const updated = [profile, ...localUsers.filter(u => u.uid !== profile.uid)];
+    localStorage.setItem('okorie_users', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore updateUserProfile failed, performing local operation:", error);
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const updated = [profile, ...localUsers.filter(u => u.uid !== profile.uid)];
+    localStorage.setItem('okorie_users', JSON.stringify(updated));
+  }
+};
+
+export const fetchAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    return snapshot.docs.map(d => d.data() as UserProfile);
+  } catch (error) {
+    console.warn("Firestore fetchAllUsers failed, falling back to local storage:", error);
+    return JSON.parse(localStorage.getItem('okorie_users') || '[]');
+  }
+};
+
+
+// ==========================================
+// TRANSACTION & CHECKSUM OPERATIONS
+// ==========================================
+
+export const addTransaction = async (txn: Omit<Transaction, 'id'>): Promise<Transaction> => {
+  try {
+    const docRef = await addDoc(collection(db, 'transactions'), txn);
+    const newTxn = { id: docRef.id, ...txn };
+
+    // Sync to local
+    const localTxns = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
+    localStorage.setItem('okorie_transactions', JSON.stringify([newTxn, ...localTxns]));
+    return newTxn;
+  } catch (error) {
+    console.warn("Firestore addTransaction failed, performing local:", error);
+    const id = 'local_txn_' + Date.now() + Math.random().toString(36).substring(5);
+    const newTxn = { id, ...txn };
+    const localTxns = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
+    localStorage.setItem('okorie_transactions', JSON.stringify([newTxn, ...localTxns]));
+    return newTxn;
+  }
+};
+
+export const updateTransactionStatus = async (id: string, status: 'success' | 'failed'): Promise<void> => {
+  try {
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'transactions', id);
+      await updateDoc(docRef, { status });
+    }
+    // Sync local
+    const localTxns: Transaction[] = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
+    const updated = localTxns.map(t => t.id === id ? { ...t, status } : t);
+    localStorage.setItem('okorie_transactions', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore updateTransactionStatus failed:", error);
+    const localTxns: Transaction[] = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
+    const updated = localTxns.map(t => t.id === id ? { ...t, status } : t);
+    localStorage.setItem('okorie_transactions', JSON.stringify(updated));
+  }
+};
+
+export const fetchUserTransactions = async (uid: string): Promise<Transaction[]> => {
+  try {
+    const q = query(collection(db, 'transactions'), where('userId', '==', uid));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+  } catch (error) {
+    console.warn("Firestore fetchUserTransactions failed, falling back to local:", error);
+    const localTxns: Transaction[] = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
+    return localTxns.filter(t => t.userId === uid);
+  }
+};
+
+export const fetchAllTransactions = async (): Promise<Transaction[]> => {
+  try {
+    const snapshot = await getDocs(collection(db, 'transactions'));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+  } catch (error) {
+    console.warn("Firestore fetchAllTransactions failed, falling back to local:", error);
+    return JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
+  }
+};
+
+
+// ==========================================
+// COMMENT & ENGAGEMENT OPERATIONS
+// ==========================================
+
+export const addComment = async (comment: Omit<Comment, 'id'>): Promise<Comment> => {
+  try {
+    const docRef = await addDoc(collection(db, 'comments'), comment);
+    const newComment = { id: docRef.id, ...comment };
+
+    // Sync local
+    const localComments = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    localStorage.setItem('okorie_comments', JSON.stringify([newComment, ...localComments]));
+    return newComment;
+  } catch (error) {
+    console.warn("Firestore addComment failed, performing local:", error);
+    const id = 'local_comment_' + Date.now();
+    const newComment = { id, ...comment };
+    const localComments = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    localStorage.setItem('okorie_comments', JSON.stringify([newComment, ...localComments]));
+    return newComment;
+  }
+};
+
+export const fetchPublicationComments = async (pubId: string): Promise<Comment[]> => {
+  try {
+    const q = query(collection(db, 'comments'), where('publicationId', '==', pubId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
+  } catch (error) {
+    console.warn("Firestore fetchPublicationComments failed, falling back to local:", error);
+    const localComments: Comment[] = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    return localComments.filter(c => c.publicationId === pubId);
+  }
+};
+
+export const fetchAllComments = async (): Promise<Comment[]> => {
+  try {
+    const snapshot = await getDocs(collection(db, 'comments'));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
+  } catch (error) {
+    console.warn("Firestore fetchAllComments failed, falling back to local:", error);
+    return JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+  }
+};
+
+export const updateCommentStatus = async (id: string, status: 'approved' | 'rejected' | 'pending'): Promise<void> => {
+  try {
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'comments', id);
+      await updateDoc(docRef, { status });
+    }
+    const localComments: Comment[] = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    const updated = localComments.map(c => c.id === id ? { ...c, status } : c);
+    localStorage.setItem('okorie_comments', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore updateCommentStatus failed:", error);
+    const localComments: Comment[] = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    const updated = localComments.map(c => c.id === id ? { ...c, status } : c);
+    localStorage.setItem('okorie_comments', JSON.stringify(updated));
+  }
+};
+
+export const deleteComment = async (id: string): Promise<void> => {
+  try {
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'comments', id);
+      await deleteDoc(docRef);
+    }
+    const localComments: Comment[] = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    const updated = localComments.filter(c => c.id !== id);
+    localStorage.setItem('okorie_comments', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore deleteComment failed:", error);
+    const localComments: Comment[] = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
+    const updated = localComments.filter(c => c.id !== id);
+    localStorage.setItem('okorie_comments', JSON.stringify(updated));
   }
 };

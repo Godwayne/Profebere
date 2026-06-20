@@ -1,25 +1,19 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { 
   Lock, Key, LogOut, BookOpen, Layers, Rss, Camera, Mail, BarChart2, Plus, Edit2, Trash2, 
-  Check, X, Eye, FileText, CheckCircle, Tag, Calendar, ShieldAlert 
+  Check, X, Eye, FileText, CheckCircle, Tag, Calendar, ShieldAlert, CreditCard, 
+  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download
 } from 'lucide-react';
-import { 
-  auth 
-} from '../firebase';
-import { 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  Publication, BlogPost, Project, GalleryImage, ContactMessage 
-} from '../types';
+import { auth } from '../firebase';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { Publication, BlogPost, Project, GalleryImage, ContactMessage, Transaction, Comment } from '../types';
 import { 
   addPublication, updatePublication, deletePublication,
   addProject, updateProject, deleteProject,
   addBlogPost, updateBlogPost, deleteBlogPost,
   addGalleryImage, deleteGalleryImage,
-  fetchMessages, updateMessageReadStatus, deleteMessage 
+  fetchMessages, updateMessageReadStatus, deleteMessage,
+  fetchAllTransactions, fetchAllComments, updateCommentStatus, deleteComment
 } from '../services/db';
 
 interface AdminDashboardProps {
@@ -50,8 +44,13 @@ export default function AdminDashboard({
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
 
+  // E-commerce & Comments Moderating
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [moderationLoading, setModerationLoading] = useState(false);
+
   // Active Admin Tabs
-  // 'publications' | 'projects' | 'blog' | 'gallery' | 'messages' | 'analytics'
+  // 'analytics' | 'publications' | 'projects' | 'blog' | 'gallery' | 'messages' | 'transactions' | 'comments'
   const [activeTab, setActiveTab] = useState<string>('analytics');
 
   // Modals Forms
@@ -61,7 +60,8 @@ export default function AdminDashboard({
 
   // Forms Fields State
   const [pubForm, setPubForm] = useState({
-    title: '', authors: '', type: 'journal' as any, publisher: '', year: new Date().getFullYear(), link: '', description: ''
+    title: '', authors: '', type: 'journal' as any, publisher: '', year: new Date().getFullYear(), 
+    link: '', description: '', isPaid: false, price: 5000, downloadUrl: ''
   });
   const [projForm, setProjForm] = useState({
     title: '', status: 'ongoing' as any, role: 'Principal Investigator', description: '', funding: '', timeline: ''
@@ -91,10 +91,11 @@ export default function AdminDashboard({
     return () => unsubscribe();
   }, []);
 
-  // Fetch Message Inbox
+  // Fetch Message Inbox & E-commerce metrics
   useEffect(() => {
     if (isLoggedIn) {
       loadMessages();
+      loadEcomAndFeedbackData();
     }
   }, [isLoggedIn]);
 
@@ -103,6 +104,22 @@ export default function AdminDashboard({
     const msgs = await fetchMessages();
     setMessages(msgs);
     setMessagesLoading(false);
+  };
+
+  const loadEcomAndFeedbackData = async () => {
+    setModerationLoading(true);
+    try {
+      const [allTxns, allComments] = await Promise.all([
+        fetchAllTransactions(),
+        fetchAllComments()
+      ]);
+      setTransactions(allTxns || []);
+      setComments(allComments || []);
+    } catch (err) {
+      console.error("Error logging admin metadata:", err);
+    } finally {
+      setModerationLoading(false);
+    }
   };
 
   // Login handler
@@ -147,9 +164,7 @@ export default function AdminDashboard({
     }
   };
 
-  // ==========================================
   // MESSAGE HANDLERS
-  // ==========================================
   const handleToggleRead = async (id: string, currentRead: boolean) => {
     await updateMessageReadStatus(id, !currentRead);
     loadMessages();
@@ -162,6 +177,19 @@ export default function AdminDashboard({
     }
   };
 
+  // COMMENT MODERATION HANDLERS
+  const handleCommentStatusModify = async (id: string, nextStatus: 'approved' | 'rejected') => {
+    await updateCommentStatus(id, nextStatus);
+    loadEcomAndFeedbackData();
+  };
+
+  const handleCommentDelete = async (id: string) => {
+    if (window.confirm("Permanently erase student comment?")) {
+      await deleteComment(id);
+      loadEcomAndFeedbackData();
+    }
+  };
+
   // ==========================================
   // MODAL CREATION/MANAGEMENT
   // ==========================================
@@ -171,7 +199,10 @@ export default function AdminDashboard({
     setIsModalOpen(true);
     
     // Reset inputs
-    setPubForm({ title: '', authors: 'Prof. Ebere Okorie', type: 'journal', publisher: '', year: new Date().getFullYear(), link: '', description: '' });
+    setPubForm({ 
+      title: '', authors: 'Prof. Ebere Okorie', type: 'journal', publisher: '', 
+      year: new Date().getFullYear(), link: '', description: '', isPaid: false, price: 5000, downloadUrl: '' 
+    });
     setProjForm({ title: '', status: 'ongoing', role: 'Principal Investigator', description: '', funding: '', timeline: '2026 - Present' });
     setBlogForm({ title: '', content: '', excerpt: '', category: 'Announcements', imageUrl: 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=600' });
     setGalForm({ imageUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=600', caption: '', category: 'Lectures' });
@@ -190,7 +221,10 @@ export default function AdminDashboard({
         publisher: item.publisher,
         year: item.year,
         link: item.link || '',
-        description: item.description || ''
+        description: item.description || '',
+        isPaid: item.isPaid || false,
+        price: item.price || 5000,
+        downloadUrl: item.downloadUrl || ''
       });
     } else if (type === 'proj') {
       setProjForm({
@@ -217,9 +251,18 @@ export default function AdminDashboard({
     try {
       if (modalType === 'pub') {
         if (editItem) {
-          await updatePublication({ id: editItem.id, ...pubForm, dateAdded: editItem.dateAdded || new Date().toISOString() });
+          await updatePublication({ 
+            id: editItem.id, 
+            ...pubForm, 
+            dateAdded: editItem.dateAdded || new Date().toISOString(),
+            likesCount: editItem.likesCount || 0
+          });
         } else {
-          await addPublication({ ...pubForm, dateAdded: new Date().toISOString() });
+          await addPublication({ 
+            ...pubForm, 
+            dateAdded: new Date().toISOString(),
+            likesCount: 0 
+          });
         }
       } else if (modalType === 'proj') {
         if (editItem) {
@@ -259,9 +302,23 @@ export default function AdminDashboard({
     }
   };
 
-  // ==========================================
-  // UNRESTRICTED ACCESS PORT
-  // ==========================================
+  // Consolidated Math Metrics
+  const unreadMessagesCount = messages.filter(m => !m.read).length;
+  const pendingCommentsCount = comments.filter(c => c.status === 'pending').length;
+  
+  // Sales Total revenues
+  const successfulTxns = transactions.filter(t => t.status === 'success');
+  const totalBookSales = successfulTxns
+    .filter(t => t.type === 'purchase')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const totalDonations = successfulTxns
+    .filter(t => t.type === 'donation')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const totalLikesAcrossWorks = publications.reduce((sum, p) => sum + (p.likesCount || 0), 0);
+
+  // Login Barrier check
   if (!isLoggedIn) {
     return (
       <div className="max-w-md mx-auto py-12 px-6 text-left animate-fade-in space-y-8 select-none">
@@ -295,7 +352,7 @@ export default function AdminDashboard({
 
           <form onSubmit={handleLogin} className="space-y-4">
             {authError && (
-              <div className="text-xs text-red-650 bg-red-50 border border-red-200 p-3 rounded-lg leading-relaxed">
+              <div className="text-xs text-red-655 bg-red-50 border border-red-200 p-3 rounded-lg leading-relaxed">
                 {authError}
               </div>
             )}
@@ -334,7 +391,7 @@ export default function AdminDashboard({
               id="admin_login_submit"
               type="submit"
               disabled={authLoading}
-              className="w-full inline-flex items-center justify-center space-x-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-6 py-2.5 rounded-lg transition shadow-md hover:shadow-lg cursor-pointer"
+              className="w-full inline-flex items-center justify-center space-x-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-6 py-2.5 rounded-lg transition shadow-md hover:shadow-lg cursor-pointer animate-pulse"
             >
               <span>Authenticate and Enter</span>
             </button>
@@ -344,11 +401,8 @@ export default function AdminDashboard({
     );
   }
 
-  // Calculate quick admin totals
-  const unreadMessagesCount = messages.filter(m => !m.read).length;
-
   return (
-    <div className="grid md:grid-cols-12 gap-8 text-left animate-fade-in py-4">
+    <div className="grid md:grid-cols-12 gap-8 text-left animate-fade-in py-4 text-slate-800">
       
       {/* Sidebar Nav (3 Cols) */}
       <div className="md:col-span-3 space-y-6">
@@ -373,11 +427,13 @@ export default function AdminDashboard({
           <nav className="flex flex-col space-y-1 font-sans text-xs sm:text-sm">
             {[
               { id: 'analytics', label: 'Consolidated Stats', icon: BarChart2 },
-              { id: 'publications', label: 'My Publications', icon: BookOpen, count: publications.length },
+              { id: 'publications', label: 'Publications Library', icon: BookOpen, count: publications.length },
               { id: 'projects', label: 'Research Projects', icon: Layers, count: projects.length },
               { id: 'blog', label: 'News & Blog', icon: Rss, count: blogPosts.length },
               { id: 'gallery', label: 'Event Gallery', icon: Camera, count: galleryImages.length },
               { id: 'messages', label: 'Inquiries Inbox', icon: Mail, count: unreadMessagesCount, hasBadge: true },
+              { id: 'transactions', label: 'Purchase Ledger', icon: CreditCard, count: successfulTxns.length },
+              { id: 'comments', label: 'Comments Queue', icon: MessageSquare, count: pendingCommentsCount, hasBadge: true },
             ].map(navItem => (
               <button
                 key={navItem.id}
@@ -408,46 +464,71 @@ export default function AdminDashboard({
       </div>
 
       {/* Main Console Area (9 Cols) */}
-      <div className="md:col-span-9 space-y-6">
+      <div className="md:col-span-9 space-y-6 bg-white border border-slate-150 p-6 md:p-8 rounded-2xl shadow-xs">
         
         {/* TAB: ANALYTICS */}
         {activeTab === 'analytics' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="border-b border-slate-250 pb-3">
-              <h3 className="font-serif text-2xl font-bold text-slate-900">Consolidated Stats</h3>
+            <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Governance & Analytics</h3>
+                <p className="text-xs text-slate-500">Live indicators mapped directly to system registries.</p>
+              </div>
+              <button
+                onClick={loadEcomAndFeedbackData}
+                disabled={moderationLoading}
+                className="cursor-pointer text-[10px] uppercase font-mono font-bold bg-slate-100 hover:bg-slate-200 py-1.5 px-3 rounded text-navy"
+              >
+                {moderationLoading ? "Refreshing..." : "Re-sync ledger"}
+              </button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {[
-                { title: "Publications", value: publications.length, desc: "Books & Articles", color: "bg-blue-500 text-white" },
-                { title: "Research Projects", value: projects.length, desc: "Studies & Grants", color: "bg-amber-500 text-slate-950 font-bold" },
-                { title: "Articles Injected", value: blogPosts.length, desc: "News & Remarks", color: "bg-emerald-500 text-white" },
-                { title: "Unread Letters", value: unreadMessagesCount, desc: "Pending Replies", color: unreadMessagesCount > 0 ? "bg-red-500 text-white" : "bg-slate-500 text-white" },
-              ].map((card, i) => (
-                <div key={i} className="bg-white border border-slate-150 p-6 rounded-2xl shadow-xs space-y-2">
-                  <span className="text-slate-500 text-xs font-semibold block">{card.title}</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-serif text-3xl font-bold text-slate-900">{card.value}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-medium block">{card.desc}</span>
-                </div>
-              ))}
+            {/* Micro analytics grid cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#fdfcf9] border border-slate-150 p-5 rounded-xl">
+                <span className="text-slate-400 font-mono text-[9px] uppercase font-bold block">Paper sales</span>
+                <span className="font-serif text-2xl font-bold text-navy block mt-1">₦{totalBookSales.toLocaleString()}</span>
+                <span className="text-[10px] text-green-700 font-medium block mt-1 font-mono">
+                  {successfulTxns.filter(t => t.type === 'purchase').length} Units Vetted
+                </span>
+              </div>
+              <div className="bg-[#fdfcf9] border border-slate-150 p-5 rounded-xl">
+                <span className="text-slate-400 font-mono text-[9px] uppercase font-bold block">Total donations</span>
+                <span className="font-serif text-2xl font-bold text-navy block mt-1">₦{totalDonations.toLocaleString()}</span>
+                <span className="text-[10px] text-gold font-medium block mt-1 font-mono">
+                  {successfulTxns.filter(t => t.type === 'donation').length} Philanthropists
+                </span>
+              </div>
+              <div className="bg-[#fdfcf9] border border-slate-150 p-5 rounded-xl">
+                <span className="text-slate-400 font-mono text-[9px] uppercase font-bold block">Likes & bookmarks</span>
+                <span className="font-serif text-2xl font-bold text-navy block mt-1">{totalLikesAcrossWorks}</span>
+                <span className="text-[10px] text-rose-600 font-medium block mt-1 font-mono flex items-center gap-1">
+                  <Heart className="h-3 w-3 fill-rose-600" /> Interaction Density
+                </span>
+              </div>
+              <div className="bg-[#fdfcf9] border border-slate-150 p-5 rounded-xl">
+                <span className="text-slate-400 font-mono text-[9px] uppercase font-bold block">Feedback comments</span>
+                <span className="font-serif text-2xl font-bold text-navy block mt-1">{comments.length}</span>
+                <span className="text-[10px] text-amber-700 font-medium block mt-1 font-mono">
+                  {pendingCommentsCount} Pending Moderation
+                </span>
+              </div>
             </div>
 
             {/* Quick action helper card */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6">
-              <div className="space-y-2 text-center sm:text-left">
-                <h4 className="font-serif font-bold text-lg text-slate-900">Speed Creation Center</h4>
-                <p className="text-slate-500 text-xs sm:max-w-md">Instantly inject a publication record, write an announcement, and sync updates directly to visitors.</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="space-y-1.5 text-center sm:text-left">
+                <h4 className="font-serif font-bold text-base text-slate-900">Database Injection Desk</h4>
+                <p className="text-slate-500 text-xs sm:max-w-md">Dynamically key in research materials, toggle monetization boundaries, and configure downloads.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => openAddModal('pub')} className="bg-[#0f172a] hover:bg-slate-800 text-white font-semibold text-xs px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer">
-                  <Plus className="h-4.5 w-4.5 text-amber-400" />
+                <button onClick={() => openAddModal('pub')} className="bg-[#0f172a] hover:bg-slate-800 text-gold hover:text-white font-semibold font-mono text-[10px] px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer">
+                  <Plus className="h-4.5 w-4.5 text-gold" />
                   <span>Publication</span>
                 </button>
-                <button onClick={() => openAddModal('blog')} className="bg-[#0f172a] hover:bg-slate-800 text-white font-semibold text-xs px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer">
-                  <Plus className="h-4.5 w-4.5 text-amber-400" />
-                  <span>Blog Post</span>
+                <button onClick={() => openAddModal('blog')} className="bg-[#0f172a] hover:bg-slate-800 text-gold hover:text-white font-semibold font-mono text-[10px] px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer">
+                  <Plus className="h-4.5 w-4.5 text-gold" />
+                  <span>News Post</span>
                 </button>
               </div>
             </div>
@@ -457,11 +538,14 @@ export default function AdminDashboard({
         {/* TAB: PUBLICATIONS */}
         {activeTab === 'publications' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <h3 className="font-serif text-2xl font-bold text-slate-900">Manage Publications</h3>
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Research & Textbook Registry</h3>
+                <p className="text-xs text-slate-500">Manage all books, journal drafts, and pricing parameters.</p>
+              </div>
               <button 
                 onClick={() => openAddModal('pub')}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                className="bg-navy hover:bg-gold hover:text-navy text-gold text-xs px-4 py-2.5 font-mono uppercase font-bold flex items-center space-x-1 cursor-pointer"
               >
                 <Plus className="h-5 w-5" />
                 <span>Add Publication</span>
@@ -470,30 +554,39 @@ export default function AdminDashboard({
 
             <div className="space-y-3">
               {publications.map(pub => (
-                <div key={pub.id} className="bg-white p-4 rounded-xl border border-slate-150 flex justify-between items-center gap-4">
+                <div key={pub.id} className="bg-white p-4 border border-slate-150 flex justify-between items-center gap-4 hover:shadow-sm transition">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono bg-slate-100 text-slate-700">
                         {pub.type}
                       </span>
+                      {pub.isPaid ? (
+                        <span className="text-[9px] uppercase font-bold font-mono px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800">
+                          ₦{pub.price?.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] uppercase font-bold font-mono px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800">
+                          Free
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400 font-bold font-mono">{pub.year}</span>
                     </div>
                     <h4 className="font-serif font-bold text-slate-900 text-sm line-clamp-1">{pub.title}</h4>
-                    <p className="text-xs text-slate-500 italic max-w-lg truncate">{pub.publisher}</p>
+                    <p className="text-xs text-slate-500 italic max-w-lg truncate">{pub.authors} &bull; {pub.publisher}</p>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
                     <button 
                       onClick={() => openEditModal('pub', pub)}
-                      className="p-2 border border-slate-200 hover:border-amber-500 hover:text-amber-600 rounded-lg transition"
-                      title="Edit publications details"
+                      className="p-2 border border-slate-200 hover:border-amber-500 hover:text-amber-600 rounded(lg) transition"
+                      title="Edit details"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
                     <button 
                       onClick={() => handleDeleteItem('pub', pub.id)}
-                      className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-650 rounded-lg transition"
-                      title="Deletes publication"
+                      className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-650 rounded(lg) transition"
+                      title="Delete monograph"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -507,11 +600,11 @@ export default function AdminDashboard({
         {/* TAB: PROJECTS */}
         {activeTab === 'projects' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
               <h3 className="font-serif text-2xl font-bold text-slate-900">Manage Research Projects</h3>
               <button 
                 onClick={() => openAddModal('proj')}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                className="bg-navy text-gold hover:bg-gold hover:text-navy text-xs px-4 py-2.5 font-mono uppercase font-bold flex items-center space-x-1 cursor-pointer animate-pulse"
               >
                 <Plus className="h-5 w-5" />
                 <span>Add Research</span>
@@ -520,10 +613,10 @@ export default function AdminDashboard({
 
             <div className="space-y-3">
               {projects.map(proj => (
-                <div key={proj.id} className="bg-white p-4 rounded-xl border border-slate-150 flex justify-between items-center gap-4">
+                <div key={proj.id} className="bg-white p-4 border border-slate-150 flex justify-between items-center gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full font-mono ${
+                      <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 font-mono ${
                         proj.status === 'ongoing' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
                       }`}>
                         {proj.status}
@@ -537,13 +630,13 @@ export default function AdminDashboard({
                   <div className="flex items-center gap-2 shrink-0">
                     <button 
                       onClick={() => openEditModal('proj', proj)}
-                      className="p-2 border border-slate-200 hover:border-amber-500 hover:text-amber-600 rounded-lg transition"
+                      className="p-2 border border-slate-200 hover:border-amber-500 hover:text-amber-600 rounded(lg) transition"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
                     <button 
                       onClick={() => handleDeleteItem('proj', proj.id)}
-                      className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-500 rounded-lg transition"
+                      className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-500 rounded(lg) transition"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -557,11 +650,11 @@ export default function AdminDashboard({
         {/* TAB: NEWS BLOG */}
         {activeTab === 'blog' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
               <h3 className="font-serif text-2xl font-bold text-slate-900">Manage Blog & News Posts</h3>
               <button 
                 onClick={() => openAddModal('blog')}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                className="bg-navy text-gold hover:bg-gold hover:text-navy text-xs px-4 py-2.5 font-mono uppercase font-bold flex items-center space-x-1 cursor-pointer"
               >
                 <Plus className="h-5 w-5" />
                 <span>Write News Post</span>
@@ -570,12 +663,12 @@ export default function AdminDashboard({
 
             <div className="space-y-3">
               {blogPosts.map(post => (
-                <div key={post.id} className="bg-white p-4 rounded-xl border border-slate-150 flex justify-between items-center gap-4">
+                <div key={post.id} className="bg-white p-4 border border-slate-150 flex justify-between items-center gap-4">
                   <div className="flex items-center gap-3">
                     {post.imageUrl && (
-                      <img src={post.imageUrl} alt={post.title} referrerPolicy="no-referrer" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                      <img src={post.imageUrl} alt={post.title} referrerPolicy="no-referrer" className="w-12 h-12 rounded(lg) object-cover shrink-0" />
                     )}
-                    <div className="space-y-1">
+                    <div className="space-y-1 text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] uppercase font-bold text-amber-600 font-mono">{post.category}</span>
                         <span className="text-[10px] text-slate-400 font-bold font-mono">{post.date}</span>
@@ -588,13 +681,13 @@ export default function AdminDashboard({
                   <div className="flex items-center gap-2 shrink-0">
                     <button 
                       onClick={() => openEditModal('blog', post)}
-                      className="p-2 border border-slate-200 hover:border-amber-500 hover:text-amber-600 rounded-lg transition"
+                      className="p-2 border border-slate-200 hover:border-amber-500 hover:text-amber-600 rounded(lg) transition"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
                     <button 
                       onClick={() => handleDeleteItem('blog', post.id)}
-                      className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-500 rounded-lg transition"
+                      className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-500 rounded(lg) transition"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -608,11 +701,11 @@ export default function AdminDashboard({
         {/* TAB: GALLERY */}
         {activeTab === 'gallery' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
               <h3 className="font-serif text-2xl font-bold text-slate-900">Manage Media Gallery</h3>
               <button 
                 onClick={() => openAddModal('gal')}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                className="bg-navy text-gold hover:bg-gold hover:text-navy text-xs px-4 py-2.5 font-mono uppercase font-bold flex items-center space-x-1 cursor-pointer"
               >
                 <Plus className="h-5 w-5" />
                 <span>Add Gallery Image</span>
@@ -621,21 +714,21 @@ export default function AdminDashboard({
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {galleryImages.map(img => (
-                <div key={img.id} className="bg-white border border-slate-150 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between">
+                <div key={img.id} className="bg-white border border-slate-150 overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between">
                   <div className="relative aspect-video bg-slate-150">
                     <img src={img.imageUrl} alt={img.caption} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-cover" />
                   </div>
                   <div className="p-4 space-y-3 flex-grow flex flex-col justify-between">
                     <div className="space-y-1 text-left">
                       <div className="flex items-center justify-between text-[9px] font-mono font-bold text-slate-400">
-                        <span className="text-amber-600">{img.category}</span>
+                        <span className="text-gold font-bold">{img.category}</span>
                         <span>{img.date}</span>
                       </div>
                       <p className="text-xs text-slate-600 font-medium line-clamp-2 pt-1">{img.caption}</p>
                     </div>
                     <button 
                       onClick={() => handleDeleteItem('gal', img.id)}
-                      className="w-full inline-flex items-center justify-center space-x-1 border border-slate-200 hover:border-red-500 hover:text-red-550 py-2 rounded-lg text-xs font-semibold mt-2 cursor-pointer"
+                      className="w-full inline-flex items-center justify-center space-x-1 border border-slate-200 hover:border-red-500 hover:text-red-550 py-2 text-xs font-semibold mt-2 cursor-pointer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       <span>Delete Asset</span>
@@ -649,26 +742,26 @@ export default function AdminDashboard({
 
         {/* TAB: MESSAGES INBOX */}
         {activeTab === 'messages' && (
-          <div className="space-y-6">
-            <div className="border-b border-slate-200 pb-3">
+          <div className="space-y-6 animate-fade-in">
+            <div className="border-b border-slate-250 pb-3">
               <h3 className="font-serif text-2xl font-bold text-slate-900">Inquiries Inbox</h3>
             </div>
 
             <div className="space-y-4">
               {messagesLoading ? (
-                <div className="text-center py-10 text-xs text-slate-400 leading-relaxed font-mono">Syncing inbox messages...</div>
+                <div className="text-center py-10 text-xs text-slate-400 font-mono">Syncing inbox messages...</div>
               ) : messages.length > 0 ? (
                 messages.map(msg => (
                   <div 
                     key={msg.id} 
-                    className={`bg-white border rounded-2xl p-6 transition shadow-xs flex flex-col sm:flex-row gap-6 items-start justify-between ${
-                      msg.read ? 'border-slate-150 bg-slate-50/50' : 'border-amber-200 bg-white shadow-sm ring-1 ring-amber-400/10'
+                    className={`border p-5 transition flex flex-col sm:flex-row gap-6 items-start justify-between ${
+                      msg.read ? 'border-slate-150 bg-slate-50/50' : 'border-amber-200 bg-[#fdfcf9] shadow-xs'
                     }`}
                   >
-                    <div className="space-y-2 flex-grow">
+                    <div className="space-y-2 flex-grow text-left">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${
-                          msg.read ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-700 border border-red-100'
+                        <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded font-mono ${
+                          msg.read ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-700 border border-red-100 font-bold'
                         }`}>
                           {msg.read ? 'read' : 'unread'}
                         </span>
@@ -677,32 +770,35 @@ export default function AdminDashboard({
                       </div>
 
                       <h4 className="font-serif font-bold text-slate-900 text-sm sm:text-base">{msg.subject}</h4>
-                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg font-light mt-1">
+                      <p className="text-xs text-slate-600 leading-relaxed bg-[#fdfcf9] border border-slate-150 p-3 font-light mt-1">
                         {msg.message}
                       </p>
                       
                       <div className="text-[10px] font-mono text-slate-400 font-medium">
-                        Received: {new Date(msg.date).toLocaleDateString()} {new Date(msg.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        Received: {new Date(msg.date).toLocaleDateString()}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-start pt-2 sm:pt-0">
                       <button 
                         onClick={() => handleToggleRead(msg.id, msg.read)}
-                        className={`p-2 border rounded-lg transition text-xs font-semibold flex items-center space-x-1 cursor-pointer ${
+                        className={`p-2 border transition text-xs font-semibold flex items-center space-x-1 cursor-pointer ${
                           msg.read 
                             ? 'border-slate-200 hover:border-amber-500 hover:text-amber-600 text-slate-500' 
                             : 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100'
                         }`}
-                        title={msg.read ? "Mark as unread" : "Mark as read"}
                       >
                         <Check className="h-4 w-4" />
                         <span>{msg.read ? "Mark Unread" : "Mark Read"}</span>
                       </button>
                       <button 
-                        onClick={() => handleDeleteMsg(msg.id)}
-                        className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-500 rounded-lg text-slate-400 transition"
-                        title="Delete letter"
+                        onClick={async () => {
+                          if (window.confirm("Delete this inquiry Permanently?")) {
+                            await deleteMessage(msg.id);
+                            loadMessages();
+                          }
+                        }}
+                        className="p-2 border border-slate-200 hover:border-red-500 hover:text-red-500 text-slate-400 transition"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -710,7 +806,7 @@ export default function AdminDashboard({
                   </div>
                 ))
               ) : (
-                <div className="bg-white rounded-2xl py-12 px-6 text-center border border-slate-100 text-slate-500 space-y-2">
+                <div className="bg-white py-12 px-6 text-center border border-slate-150 text-slate-500 space-y-2">
                   <Mail className="h-10 w-10 mx-auto text-slate-300" />
                   <p className="font-serif text-lg font-semibold">Inbox Empty</p>
                   <p className="text-xs">Incoming correspondences submitted from the portal will land here automatically.</p>
@@ -719,6 +815,161 @@ export default function AdminDashboard({
             </div>
           </div>
         )}
+
+        {/* TAB: TRANSACTIONS LEDGER */}
+        {activeTab === 'transactions' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Financial Ledger Transcripts</h3>
+                <p className="text-xs text-slate-500">View and audit all digital checkouts, donations, and payments.</p>
+              </div>
+              <button 
+                onClick={loadEcomAndFeedbackData}
+                className="cursor-pointer text-[10px] uppercase font-mono font-bold bg-slate-100 border border-slate-200 py-1.5 px-3"
+              >
+                Sync ledger
+              </button>
+            </div>
+
+            {transactions.length === 0 ? (
+              <div className="py-12 border border-dashed border-slate-200 text-center text-slate-400">
+                <CreditCard className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                <p className="font-mono text-xs">No transactions have been logged onto database registries yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 font-mono text-[9px] uppercase tracking-wider text-slate-400">
+                      <th className="py-2.5">Date</th>
+                      <th className="py-2.5">Reference ID</th>
+                      <th className="py-2.5">Contributor Details</th>
+                      <th className="py-2.5">Category</th>
+                      <th className="py-2.5">Donation Note</th>
+                      <th className="py-2.5">Sum</th>
+                      <th className="py-2.5">Vetting</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {transactions.map(t => (
+                      <tr key={t.id} className="hover:bg-slate-50/50">
+                        <td className="py-3 text-slate-500 font-mono text-[10px]">
+                          {new Date(t.date).toLocaleDateString()}
+                        </td>
+                        <td className="py-3 font-mono text-[10px] text-navy font-bold">
+                          {t.reference}
+                        </td>
+                        <td className="py-3">
+                          <span className="block font-medium text-slate-900">{t.userName}</span>
+                          <span className="block text-[10px] text-slate-400 font-mono">{t.userEmail}</span>
+                        </td>
+                        <td className="py-3 font-mono text-[10px] uppercase font-bold text-[#002147]/80">
+                          {t.type === 'purchase' ? 'Licensing Buy' : 'Outreach Support'}
+                        </td>
+                        <td className="py-3 max-w-[150px] truncate italic text-slate-500" title={t.message}>
+                          {t.message || '—'}
+                        </td>
+                        <td className="py-3 font-semibold text-slate-900">
+                          ₦{t.amount.toLocaleString()}
+                        </td>
+                        <td className="py-3">
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase font-bold border ${
+                            t.status === 'success' 
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                              : 'bg-red-50 text-red-800 border-red-200'
+                          }`}>
+                            {t.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: COMMENTS QUEUE */}
+        {activeTab === 'comments' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Moderation Desk</h3>
+                <p className="text-xs text-slate-500">Approve or reject student commentary to prevent spam.</p>
+              </div>
+              <button 
+                onClick={loadEcomAndFeedbackData}
+                className="cursor-pointer text-[10px] uppercase font-mono font-bold bg-slate-100 border border-slate-200 py-1.5 px-3"
+              >
+                Sync comments
+              </button>
+            </div>
+
+            {comments.length === 0 ? (
+              <div className="py-12 border border-dashed border-slate-200 text-center text-slate-400">
+                <MessageSquare className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                <p className="font-mono text-xs">Comments registry completely clear.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {comments.map(c => (
+                  <div key={c.id} className="p-4 border border-slate-150 flex flex-col md:flex-row justify-between items-start gap-4">
+                    <div className="space-y-1.5 text-left flex-grow">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase tracking-wider ${
+                          c.status === 'approved' 
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                            : c.status === 'rejected'
+                            ? 'bg-red-50 text-red-800 border-red-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200 font-bold'
+                        }`}>
+                          {c.status}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-900">{c.userName}</span>
+                        <span className="text-[10px] font-mono text-slate-400">on {new Date(c.date).toLocaleDateString()}</span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-mono italic">Under monograph: "{c.publicationTitle}"</p>
+                      <p className="text-xs sm:text-sm text-slate-700 font-serif leading-relaxed bg-[#fdfcf9] border border-slate-150 p-2.5">
+                        "{c.text}"
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 pt-2 md:pt-0 self-end md:self-center">
+                      {c.status !== 'approved' && (
+                        <button
+                          onClick={() => handleCommentStatusModify(c.id, 'approved')}
+                          className="cursor-pointer p-1.5 border border-emerald-200 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded"
+                          title="Vouch & Approve Comment"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                      )}
+                      {c.status !== 'rejected' && (
+                        <button
+                          onClick={() => handleCommentStatusModify(c.id, 'rejected')}
+                          className="cursor-pointer p-1.5 border border-red-200 text-red-800 bg-red-50 hover:bg-red-105 rounded"
+                          title="Reject comment"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleCommentDelete(c.id)}
+                        className="cursor-pointer p-1.5 border border-slate-200 hover:border-red-500 text-slate-400 hover:text-red-500 rounded"
+                        title="Delete remark"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {/* ==========================================
@@ -748,7 +999,7 @@ export default function AdminDashboard({
               {modalType === 'pub' && (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Publication Title *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Publication Title *</label>
                     <input 
                       id="pub_title"
                       type="text" required value={pubForm.title} onChange={e => setPubForm({...pubForm, title: e.target.value})}
@@ -759,15 +1010,15 @@ export default function AdminDashboard({
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Collaborating Authors</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Collaborating Authors</label>
                       <input 
                         id="pub_authors"
                         type="text" value={pubForm.authors} onChange={e => setPubForm({...pubForm, authors: e.target.value})}
-                        className="w-full px-3 py-2 border border-slate-255 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Publication Year *</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Publication Year *</label>
                       <input 
                         id="pub_year"
                         type="number" required value={pubForm.year} onChange={e => setPubForm({...pubForm, year: parseInt(e.target.value) || 2026})}
@@ -778,11 +1029,11 @@ export default function AdminDashboard({
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Format Category</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Format Category</label>
                       <select 
                         id="pub_format"
                         value={pubForm.type} onChange={e => setPubForm({...pubForm, type: e.target.value as any})}
-                        className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-mono"
                       >
                         <option value="book">Book (Monograph)</option>
                         <option value="journal">Journal Paper</option>
@@ -790,7 +1041,7 @@ export default function AdminDashboard({
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Publisher / Journal Title *</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Publisher Title *</label>
                       <input 
                         id="pub_publisher"
                         type="text" required value={pubForm.publisher} onChange={e => setPubForm({...pubForm, publisher: e.target.value})}
@@ -801,7 +1052,7 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Full Text PDF Link (Optional URL)</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">External URL (Fallback Link)</label>
                     <input 
                       id="pub_link"
                       type="url" value={pubForm.link} onChange={e => setPubForm({...pubForm, link: e.target.value})}
@@ -810,11 +1061,58 @@ export default function AdminDashboard({
                     />
                   </div>
 
+                  {/* MONETIZATION GATEWAY PARAMETERS */}
+                  <div className="p-3.5 bg-amber-500/5 border border-amber-500/25 space-y-3">
+                    <span className="font-mono text-[9px] uppercase font-black text-amber-700 tracking-wider flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5" /> Monetization Settings
+                    </span>
+                    
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={pubForm.isPaid}
+                        onChange={(e) => setPubForm({ ...pubForm, isPaid: e.target.checked })}
+                        className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 cursor-pointer"
+                        id="toggle-ispaid"
+                      />
+                      <label htmlFor="toggle-ispaid" className="text-xs font-bold text-slate-700 select-none cursor-pointer">
+                        Charge for Access Keys (Paid Publication)
+                      </label>
+                    </div>
+
+                    {pubForm.isPaid && (
+                      <div className="grid sm:grid-cols-2 gap-3 animate-slide-up-faint pt-1">
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase font-bold text-slate-500 font-mono font-bold">Naira price (NGN)</label>
+                          <input
+                            type="number"
+                            value={pubForm.price}
+                            onChange={(e) => setPubForm({ ...pubForm, price: Number(e.target.value) || 5000 })}
+                            min="100"
+                            placeholder="5000"
+                            className="w-full bg-white px-2.5 py-1.5 border border-slate-250 rounded-lg text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase font-bold text-slate-500 font-mono">Secure PDF Download URL</label>
+                          <input
+                            type="url"
+                            value={pubForm.downloadUrl}
+                            onChange={(e) => setPubForm({ ...pubForm, downloadUrl: e.target.value })}
+                            placeholder="https://example.com/secure-textbook.pdf"
+                            className="w-full bg-white px-2.5 py-1.5 border border-slate-250 rounded-lg text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Abstract Paper Summary</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Abstract Paper Summary</label>
                     <textarea 
                       id="pub_desc"
-                      rows={4} value={pubForm.description} onChange={e => setPubForm({...pubForm, description: e.target.value})}
+                      rows={3} value={pubForm.description} onChange={e => setPubForm({...pubForm, description: e.target.value})}
                       placeholder="Include the short overview/abstract of the paper here..."
                       className="w-full px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 resize-none"
                     />
@@ -826,7 +1124,7 @@ export default function AdminDashboard({
               {modalType === 'proj' && (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Research Study Title *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Research Study Title *</label>
                     <input 
                       id="proj_title"
                       type="text" required value={projForm.title} onChange={e => setProjForm({...projForm, title: e.target.value})}
@@ -836,7 +1134,7 @@ export default function AdminDashboard({
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Investigator Role *</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Investigator Role *</label>
                       <input 
                         id="proj_role"
                         type="text" required value={projForm.role} onChange={e => setProjForm({...projForm, role: e.target.value})}
@@ -844,11 +1142,11 @@ export default function AdminDashboard({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Status</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono font-bold">Status</label>
                       <select 
                         id="proj_status"
                         value={projForm.status} onChange={e => setProjForm({...projForm, status: e.target.value as any})}
-                        className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-mono"
                       >
                         <option value="ongoing">Ongoing Fieldwork</option>
                         <option value="completed">Completed / Archived</option>
@@ -858,7 +1156,7 @@ export default function AdminDashboard({
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Livelihood Timeline *</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Livelihood Timeline *</label>
                       <input 
                         id="proj_timeline"
                         type="text" required value={projForm.timeline} onChange={e => setProjForm({...projForm, timeline: e.target.value})}
@@ -867,7 +1165,7 @@ export default function AdminDashboard({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Research Grant / Funding Agent</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Grant Funding Agent</label>
                       <input 
                         id="proj_funding"
                         type="text" value={projForm.funding} onChange={e => setProjForm({...projForm, funding: e.target.value})}
@@ -878,7 +1176,7 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Detailed Scope Description *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Detailed Scope Description *</label>
                     <textarea 
                       id="proj_desc"
                       rows={4} required value={projForm.description} onChange={e => setProjForm({...projForm, description: e.target.value})}
@@ -892,7 +1190,7 @@ export default function AdminDashboard({
               {modalType === 'blog' && (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Article Title *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Article Title *</label>
                     <input 
                       id="blog_title"
                       type="text" required value={blogForm.title} onChange={e => setBlogForm({...blogForm, title: e.target.value})}
@@ -902,11 +1200,11 @@ export default function AdminDashboard({
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Topic Category</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Topic Category</label>
                       <select 
                         id="blog_category"
                         value={blogForm.category} onChange={e => setBlogForm({...blogForm, category: e.target.value})}
-                        className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-mono"
                       >
                         <option value="Announcements">Announcements</option>
                         <option value="Academic Notes">Academic Notes</option>
@@ -914,7 +1212,7 @@ export default function AdminDashboard({
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase text-slate-500">Banner Web Image URL</label>
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono font-bold">Banner Web Image URL</label>
                       <input 
                         id="blog_img_url"
                         type="url" value={blogForm.imageUrl} onChange={e => setBlogForm({...blogForm, imageUrl: e.target.value})}
@@ -924,7 +1222,7 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Brief Excerpt *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono font-bold">Brief Excerpt *</label>
                     <input 
                       id="blog_excerpt"
                       type="text" required value={blogForm.excerpt} onChange={e => setBlogForm({...blogForm, excerpt: e.target.value})}
@@ -934,7 +1232,7 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Full Narrative Content (Use double linebreaks for paragraphs) *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Full Narrative Content *</label>
                     <textarea 
                       id="blog_content"
                       rows={6} required value={blogForm.content} onChange={e => setBlogForm({...blogForm, content: e.target.value})}
@@ -949,7 +1247,7 @@ export default function AdminDashboard({
               {modalType === 'gal' && (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Asset image URL *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Asset image URL *</label>
                     <input 
                       id="gal_img_url"
                       type="url" required value={galForm.imageUrl} onChange={e => setGalForm({...galForm, imageUrl: e.target.value})}
@@ -958,7 +1256,7 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Caption Description *</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Caption Description *</label>
                     <input 
                       id="gal_caption"
                       type="text" required value={galForm.caption} onChange={e => setGalForm({...galForm, caption: e.target.value})}
@@ -968,11 +1266,11 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase text-slate-500">Display Category</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Display Category</label>
                     <select 
                       id="gal_category"
                       value={galForm.category} onChange={e => setGalForm({...galForm, category: e.target.value})}
-                      className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                      className="w-full bg-slate-50 px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-mono"
                     >
                       <option value="Lectures">Lectures</option>
                       <option value="Conferences">Conferences</option>
@@ -983,18 +1281,18 @@ export default function AdminDashboard({
               )}
 
               {/* Submit panel */}
-              <div className="pt-6 border-t border-slate-100 flex justify-end gap-3">
+              <div className="pt-6 border-t border-slate-100 flex justify-end gap-3 font-mono text-xs">
                 <button 
                   type="button" 
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 text-slate-500 hover:text-slate-900 rounded-lg text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 text-slate-500 hover:text-slate-900 rounded-lg font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   id="admin_modal_submit"
                   type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-xs font-bold shadow transition cursor-pointer"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-605 text-slate-950 font-bold rounded-lg shadow transition cursor-pointer"
                 >
                   Save Record
                 </button>

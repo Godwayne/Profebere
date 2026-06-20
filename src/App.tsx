@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import About from './pages/About';
@@ -8,20 +8,22 @@ import GalleryPage from './pages/GalleryPage';
 import BlogPage from './pages/BlogPage';
 import ContactPage from './pages/ContactPage';
 import AdminDashboard from './pages/AdminDashboard';
-import { 
-  Publication, BlogPost, Project, GalleryImage 
-} from './types';
-import { 
-  fetchPublications, fetchProjects, fetchBlogPosts, fetchGalleryImages 
-} from './services/db';
+import AuthPage from './pages/AuthPage';
+import UserDashboard from './pages/UserDashboard';
 
-export default function App() {
+import { AuthProvider, useAuth } from './components/AuthContext';
+import { Publication, BlogPost, Project, GalleryImage } from './types';
+import { fetchPublications, fetchProjects, fetchBlogPosts, fetchGalleryImages } from './services/db';
+
+function AppContent() {
   const [currentPage, setCurrentPage] = useState<string>('home');
   const [publications, setPublications] = useState<Publication[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  const { user } = useAuth();
 
   const loadAllData = async () => {
     try {
@@ -94,8 +96,23 @@ export default function App() {
               onRefreshData={loadAllData} 
             />
           )}
+          {currentPage === 'dashboard' && (
+            user ? (
+              <UserDashboard />
+            ) : (
+              <AuthPage onSuccess={() => setCurrentPage('dashboard')} />
+            )
+          )}
         </>
       )}
     </Layout>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

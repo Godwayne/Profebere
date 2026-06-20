@@ -171,6 +171,55 @@
         }
       },
       "required": ["name", "email", "subject", "message", "date", "read"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Security profile block for a website visitor",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "likedPublications": { "type": "array", "items": { "type": "string" } },
+        "purchasedPublications": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["uid", "email", "displayName", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial record log of an acquisition or support donation",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string", "format": "email" },
+        "userName": { "type": "string" },
+        "type": { "type": "string", "enum": ["purchase", "donation"] },
+        "amount": { "type": "number" },
+        "publicationId": { "type": "string" },
+        "publicationTitle": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "success", "failed"] },
+        "reference": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userEmail", "userName", "type", "amount", "status", "reference", "date"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Opinion or feedback submitted under a publication, topic, or post",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "publicationId": { "type": "string" },
+        "publicationTitle": { "type": "string" },
+        "text": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }
+      },
+      "required": ["userId", "userName", "publicationId", "publicationTitle", "text", "date", "status"]
     }
   },
   "firestore": {
@@ -193,6 +242,18 @@
     "/messages/{messageId}": {
       "schema": { "$ref": "#/entities/ContactMessage" },
       "description": "Contains correspondence inquiries and messages"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Contains registered website visitors"
+    },
+    "/transactions/{txnId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Contains payment transactions"
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Contains moderated feedback comments on publications"
     }
   }
 }

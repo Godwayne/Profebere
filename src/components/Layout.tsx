@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { 
   Menu, X, GraduationCap, MapPin, Mail, ChevronRight, BookOpen, 
-  Linkedin, Twitter, Globe, Lock 
+  Linkedin, Twitter, Globe, Lock, ShieldCheck, User as UserIcon
 } from 'lucide-react';
+import { useAuth } from './AuthContext';
 
 interface LayoutProps {
   currentPage: string;
@@ -12,16 +13,18 @@ interface LayoutProps {
 
 export default function Layout({ currentPage, onNavigate, children }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, profile } = useAuth();
 
   const navigationItems = [
     { id: 'home', label: 'Home' },
-    { id: 'about', label: 'About & CV' },
-    { id: 'publications', label: 'Publications' },
+    { id: 'about', label: 'Biography' },
+    { id: 'publications', label: 'Publications Library' },
     { id: 'research', label: 'Research & Projects' },
-    { id: 'gallery', label: 'Gallery' },
+    { id: 'gallery', label: 'Fieldwork' },
     { id: 'blog', label: 'News & Blog' },
-    { id: 'contact', label: 'Contact' },
-    { id: 'admin', label: 'Consoles Portal', icon: Lock }
+    { id: 'contact', label: 'Official Mail' },
+    { id: 'dashboard', label: user ? 'Scholar Console' : 'Scholar Gateway', icon: UserIcon },
+    { id: 'admin', label: 'Admin Portal', icon: Lock }
   ];
 
   return (
@@ -38,15 +41,15 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
 
       {/* Structural University Header line */}
       <div className="bg-navy text-[#fdfcf9] text-[10px] sm:text-xs py-2 px-4 select-none border-b border-gold/20">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-1 sm:gap-4">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-1 sm:gap-4 text-left">
           <div className="flex items-center space-x-1.5 font-medium tracking-wider uppercase text-[10px]">
-            <GraduationCap className="h-4 w-4 text-gold" />
+            <GraduationCap className="h-4 w-4 text-gold shrink-0" />
             <span>Faculty of Social Sciences &bull; Department of Sociology and Anthropology</span>
           </div>
           <div className="flex items-center space-x-3.5 font-mono text-[9px] opacity-90">
             <span className="text-[#fdfcf9]/80">University of Uyo, Nigeria</span>
             <span className="text-gold">&bull;</span>
-            <span className="text-gold select-all hover:underline">ebere.okorie@uniuyo.edu.ng</span>
+            <span className="text-gold select-all hover:underline truncate max-w-[200px] sm:max-w-none">ebere.okorie@uniuyo.edu.ng</span>
           </div>
         </div>
       </div>
@@ -70,7 +73,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
           </div>
 
           {/* Desktop Navigation links */}
-          <nav className="hidden md:flex items-center space-x-1 font-sans text-xs uppercase tracking-wider font-semibold">
+          <nav className="hidden lg:flex items-center space-x-1 font-sans text-xs uppercase tracking-wider font-semibold">
             {navigationItems.map(item => (
               <button
                 key={item.id}
@@ -81,7 +84,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
                     : 'text-navy/70 hover:text-gold hover:bg-navy/[0.01]'
                 }`}
               >
-                {item.icon && <item.icon className="h-3.5 w-3.5 mr-0.5 inline-block" />}
+                {item.icon && <item.icon className="h-3.5 w-3.5 mr-0.5 inline-block text-gold" />}
                 <span>{item.label}</span>
                 {currentPage === item.id && (
                   <span className="absolute bottom-0 inset-x-3 h-[2px] bg-gold" />
@@ -93,7 +96,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
           {/* Mobile nav open triggers */}
           <button 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-navy hover:text-gold transition cursor-pointer"
+            className="lg:hidden p-2 text-navy hover:text-gold transition cursor-pointer"
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
@@ -101,7 +104,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
 
         {/* Mobile Navigation Dropdown panel */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-navy/10 bg-[#fdfcf9]/98 backdrop-blur-md p-4 space-y-2 animate-slide-down shadow-lg text-left">
+          <div className="lg:hidden border-t border-navy/10 bg-[#fdfcf9]/98 backdrop-blur-md p-4 space-y-2 animate-slide-down shadow-lg text-left">
             {navigationItems.map(item => (
               <button
                 key={item.id}
@@ -112,7 +115,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
                     : 'text-navy/80 hover:bg-navy/[0.04]'
                 }`}
               >
-                {item.icon && <item.icon className="h-4 w-4" />}
+                {item.icon && <item.icon className="h-4 w-4 shrink-0 text-gold" />}
                 <span>{item.label}</span>
               </button>
             ))}
@@ -143,7 +146,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
             <div className="pt-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 text-[10px] uppercase font-mono tracking-widest text-[#fdfcf9]/80 rounded-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Academic Ledger: Online
+                <span>Academic Portal: Online Secure</span>
               </div>
             </div>
           </div>
@@ -158,6 +161,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
                 { id: 'gallery', label: 'Fieldwork Gallery' },
                 { id: 'blog', label: 'News & Scholarly Notes' },
                 { id: 'contact', label: 'Official Correspondence' },
+                { id: 'dashboard', label: user ? 'Scholar Console' : 'Scholar Portal' },
               ].map(link => (
                 <button 
                   key={link.id} 
@@ -179,7 +183,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
               </div>
               <div className="flex items-center space-x-2.5">
                 <Mail className="h-4.5 w-4.5 text-gold shrink-0" />
-                <span>ebere.okorie@uniuyo.edu.ng</span>
+                <span className="select-all">ebere.okorie@uniuyo.edu.ng</span>
               </div>
             </div>
             

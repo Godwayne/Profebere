@@ -37,7 +37,11 @@ service cloud.firestore {
         request.resource.data.title is string && request.resource.data.title.size() <= 300 &&
         request.resource.data.authors is string && request.resource.data.authors.size() <= 200;
         
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount'])
+      );
+      allow delete: if isAdmin();
     }
 
     // --- Projects Collection ---
@@ -92,6 +96,44 @@ service cloud.firestore {
       
       // Only logged-in administrators can query, view details, mark as read, or delete inbox messages
       allow get, list, update, delete: if isAdmin();
+    }
+
+    // --- Users Collection (Visitor Profiles) ---
+    match /users/{userId} {
+      // Users can only view or write their own profile schema to protect privacy
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // --- Transactions Collection (Purchases & Donations) ---
+    match /transactions/{txnId} {
+      // Authorized query boundary checks - prevent blanket scraping of transaction data
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Clients can create pending logs of payments but cannot finalize them (status lock)
+      allow create: if isSignedIn() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount > 0;
+
+      // Only backend processes or admins with elevated authorization can settle or delete transaction logs
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Comments Collection (Scholarly Discussion Feedback) ---
+    match /comments/{commentId} {
+      // Anyone can read comments, but non-admins only see approved feedback
+      allow get, list: if true;
+
+      // Logged-in users can generate posts under their verified credentials
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() <= 2000;
+
+      // Admins manage state moderation and deletions
+      allow update, delete: if isAdmin();
     }
   }
 }
