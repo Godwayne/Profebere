@@ -13,8 +13,13 @@ import {
   addBlogPost, updateBlogPost, deleteBlogPost,
   addGalleryImage, deleteGalleryImage,
   fetchMessages, updateMessageReadStatus, deleteMessage,
-  fetchAllTransactions, fetchAllComments, updateCommentStatus, deleteComment
+  fetchAllTransactions, fetchAllComments, updateCommentStatus, deleteComment,
+  fetchDonationSettings, updateDonationSettings,
+  fetchPaymentKeys, updatePaymentKeys,
+  fetchCMSPage, saveCMSPage
 } from '../services/db';
+
+import { DonationSettings, PaymentKeys, CMSPage, CMSBlock } from '../types';
 
 interface AdminDashboardProps {
   publications: Publication[];
@@ -48,6 +53,14 @@ export default function AdminDashboard({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [moderationLoading, setModerationLoading] = useState(false);
+
+  // Dynamic configuration, payment gates, and CMS state variables
+  const [donationSettings, setDonationSettings] = useState<DonationSettings | null>(null);
+  const [paymentKeys, setPaymentKeys] = useState<PaymentKeys | null>(null);
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+  const [selectedCmsSlug, setSelectedCmsSlug] = useState<string>('home');
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
 
   // Active Admin Tabs
   // 'analytics' | 'publications' | 'projects' | 'blog' | 'gallery' | 'messages' | 'transactions' | 'comments'
@@ -96,8 +109,69 @@ export default function AdminDashboard({
     if (isLoggedIn) {
       loadMessages();
       loadEcomAndFeedbackData();
+      loadDonationSettings();
+      loadPaymentKeys();
+      loadCmsPage(selectedCmsSlug);
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, selectedCmsSlug]);
+
+  const loadDonationSettings = async () => {
+    try {
+      const settings = await fetchDonationSettings();
+      setDonationSettings(settings);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadPaymentKeys = async () => {
+    try {
+      const keys = await fetchPaymentKeys();
+      setPaymentKeys(keys);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadCmsPage = async (slug: string) => {
+    setSettingsLoading(true);
+    try {
+      let page = await fetchCMSPage(slug);
+      if (!page) {
+        const defaultBlocks: CMSBlock[] = [];
+        if (slug === 'home') {
+          defaultBlocks.push(
+            { id: 'b1', type: 'hero', heading: 'Prof. Ebere Okorie', subheading: 'Department of Sociology & Anthropology', content: 'Professor of Criminology & Sociology. Welcome to the portal.', order: 1 },
+            { id: 'b2', type: 'text', heading: 'Research Pillars', content: 'Pioneering investigations into grass-root family therapy, community surveillance programs, and Akwa Ibom frontiers.', order: 2 }
+          );
+        } else if (slug === 'about') {
+          defaultBlocks.push(
+            { id: 'b1', type: 'hero', heading: 'About Prof. Okorie', subheading: 'Educational Leadership Resume', content: 'Academic track records detailing more than 25 years of service, supervising postgraduates and crafting public security policies.', order: 1 },
+            { id: 'b2', type: 'text', heading: 'Scholarly Background', content: 'Details on Departmental and Advisory appointments at UNIDEP, TetFund, and federal levels.', order: 2 }
+          );
+        } else {
+          defaultBlocks.push(
+            { id: 'b1', type: 'text', heading: `${slug.toUpperCase()} Header`, content: 'Configure custom section-blocks for this academic page', order: 1 }
+          );
+        }
+        page = {
+          slug,
+          title: slug.charAt(0).toUpperCase() + slug.slice(1) + " Page Schema",
+          blocks: defaultBlocks,
+          metaTags: {
+            description: `Professor Ebere Okorie Academic Portal – ${slug}`,
+            keywords: `criminology, sociology, research, nigeria, ${slug}`
+          }
+        };
+        await saveCMSPage(slug, page);
+      }
+      setCmsPage(page);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
 
   const loadMessages = async () => {
     setMessagesLoading(true);
@@ -120,6 +194,78 @@ export default function AdminDashboard({
     } finally {
       setModerationLoading(false);
     }
+  };
+
+  const handleSaveDonationSettings = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!donationSettings) return;
+    setSettingsLoading(true);
+    try {
+      await updateDonationSettings(donationSettings);
+      setSaveSuccessMessage("Donation settings saved successfully!");
+      setTimeout(() => setSaveSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert("Error saving donation settings: " + err.message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleSavePaymentKeys = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!paymentKeys) return;
+    setSettingsLoading(true);
+    try {
+      await updatePaymentKeys(paymentKeys);
+      setSaveSuccessMessage("Payment settings stored securely in FireStore.");
+      setTimeout(() => setSaveSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert("Error saving payment credentials: " + err.message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleSaveCmsPage = async () => {
+    if (!cmsPage) return;
+    setSettingsLoading(true);
+    try {
+      await saveCMSPage(selectedCmsSlug, cmsPage);
+      setSaveSuccessMessage(`${selectedCmsSlug.toUpperCase()} page sections locked & published live.`);
+      setTimeout(() => setSaveSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert("Error publishing CMS layout: " + err.message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleAddCmsBlock = () => {
+    if (!cmsPage) return;
+    const newBlock: CMSBlock = {
+      id: "b_" + Date.now(),
+      type: "text",
+      heading: "New Section Title",
+      subheading: "",
+      content: "Enter your custom academic content or research summary here.",
+      order: cmsPage.blocks.length + 1
+    };
+    setCmsPage({
+      ...cmsPage,
+      blocks: [...cmsPage.blocks, newBlock]
+    });
+  };
+
+  const handleUpdateCmsBlock = (blockId: string, updatedFields: Partial<CMSBlock>) => {
+    if (!cmsPage) return;
+    const updatedBlocks = cmsPage.blocks.map(b => b.id === blockId ? { ...b, ...updatedFields } : b);
+    setCmsPage({ ...cmsPage, blocks: updatedBlocks });
+  };
+
+  const handleDeleteCmsBlock = (blockId: string) => {
+    if (!cmsPage) return;
+    const filteredBlocks = cmsPage.blocks.filter(b => b.id !== blockId);
+    setCmsPage({ ...cmsPage, blocks: filteredBlocks });
   };
 
   // Login handler
@@ -434,6 +580,9 @@ export default function AdminDashboard({
               { id: 'messages', label: 'Inquiries Inbox', icon: Mail, count: unreadMessagesCount, hasBadge: true },
               { id: 'transactions', label: 'Purchase Ledger', icon: CreditCard, count: successfulTxns.length },
               { id: 'comments', label: 'Comments Queue', icon: MessageSquare, count: pendingCommentsCount, hasBadge: true },
+              { id: 'donationsSettings', label: 'Donation Settings', icon: Heart },
+              { id: 'paymentGateway', label: 'Payment Gateway', icon: ShieldCheck },
+              { id: 'pageCMS', label: 'CMS Page Builder', icon: Sparkles },
             ].map(navItem => (
               <button
                 key={navItem.id}
@@ -965,6 +1114,433 @@ export default function AdminDashboard({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: DONATION SETTINGS */}
+        {activeTab === 'donationsSettings' && donationSettings && (
+          <form onSubmit={handleSaveDonationSettings} className="space-y-6 animate-fade-in text-left">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Donation Settings</h3>
+                <p className="text-xs text-slate-500">Configure public funding options on the academic platform.</p>
+              </div>
+              <button 
+                type="submit"
+                className="cursor-pointer bg-amber-500 text-slate-950 font-bold px-4 py-2 hover:bg-amber-600 rounded-lg text-xs font-mono"
+              >
+                Save Settings
+              </button>
+            </div>
+
+            {saveSuccessMessage && (
+              <div className="p-3 bg-emerald-55 text-emerald-800 border border-emerald-200 text-xs font-mono flex items-center space-x-2 rounded-lg bg-emerald-50">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span>{saveSuccessMessage}</span>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-4">
+              <div className="flex items-center space-x-3 bg-white p-3 border border-slate-150 rounded-lg">
+                <input 
+                  type="checkbox" 
+                  id="donation_enabled" 
+                  checked={donationSettings.enabled} 
+                  onChange={e => setDonationSettings({ ...donationSettings, enabled: e.target.checked })}
+                  className="h-4.5 w-4.5 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                />
+                <label htmlFor="donation_enabled" className="text-sm font-semibold text-slate-900 cursor-pointer selection:bg-transparent">
+                  Enable Public Contributions / Research Donations Form
+                </label>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Donation Title *</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={donationSettings.title} 
+                  onChange={e => setDonationSettings({ ...donationSettings, title: e.target.value })}
+                  placeholder="e.g. Support Academic Research & Fieldwork"
+                  className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Suggested Base Amounts (Commas Separated) *</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={donationSettings.suggestedAmounts.join(', ')} 
+                  onChange={e => {
+                    const cleanNums = e.target.value.split(',')
+                      .map(s => parseFloat(s.trim()))
+                      .filter(n => !isNaN(n));
+                    setDonationSettings({ ...donationSettings, suggestedAmounts: cleanNums });
+                  }}
+                  placeholder="e.g. 5000, 10000, 20000, 50000"
+                  className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-sm focus:outline-none focus:font-bold focus:border-amber-500 font-mono"
+                />
+                <span className="text-[10px] text-slate-400 font-mono italic">Amounts are in Nigerian Naira (₦). Ensure values are valid numbers.</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Donation Call-To-Action Content Message *</label>
+                <textarea 
+                  required 
+                  rows={4}
+                  value={donationSettings.description} 
+                  onChange={e => setDonationSettings({ ...donationSettings, description: e.target.value })}
+                  placeholder="Write a message explaining what these grants support..."
+                  className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-sans"
+                />
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* TAB: SECURE PAYMENT GATEWAY KEY PANEL */}
+        {activeTab === 'paymentGateway' && paymentKeys && (
+          <form onSubmit={handleSavePaymentKeys} className="space-y-6 animate-fade-in text-left">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Payment Gateway Panel</h3>
+                <p className="text-xs text-slate-500">Configure key keys securely inside Cloud database fallback state.</p>
+              </div>
+              <button 
+                type="submit"
+                className="cursor-pointer bg-amber-500 text-slate-950 font-bold px-4 py-2 hover:bg-amber-600 rounded-lg text-xs font-mono"
+              >
+                Secure Keys
+              </button>
+            </div>
+
+            {saveSuccessMessage && (
+              <div className="p-3 bg-emerald-55 text-emerald-800 border border-emerald-200 text-xs font-mono flex items-center space-x-2 rounded-lg bg-emerald-50">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span>{saveSuccessMessage}</span>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Active Gateway Channel</label>
+                  <select 
+                    value={paymentKeys.activeGateway} 
+                    onChange={e => setPaymentKeys({ ...paymentKeys, activeGateway: e.target.value as any })}
+                    className="w-full bg-white px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-mono font-bold"
+                  >
+                    <option value="paystack">Paystack Payments (Standard)</option>
+                    <option value="opay">OPay Wallet Transfer API</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 flex flex-col justify-end">
+                  <div className="flex items-center space-x-3 bg-white p-3 border border-slate-150 rounded-lg min-h-[38px]">
+                    <input 
+                      type="checkbox" 
+                      id="ecom_enabled" 
+                      checked={paymentKeys.paymentSystemsEnabled} 
+                      onChange={e => setPaymentKeys({ ...paymentKeys, paymentSystemsEnabled: e.target.checked })}
+                      className="h-4.5 w-4.5 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <label htmlFor="ecom_enabled" className="text-sm font-semibold text-slate-900 cursor-pointer selection:bg-transparent">
+                      Enable Payment Systems Portal-wide
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Paystack Panel */}
+              <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4">
+                <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
+                  <span className="h-2 w-2 rounded-full bg-cyan-500"></span>
+                  <span>Paystack Credentials</span>
+                </h4>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Paystack Public Key</label>
+                    <input 
+                      type="text" 
+                      placeholder="pk_test_..."
+                      required={paymentKeys.activeGateway === 'paystack'}
+                      value={paymentKeys.paystackPublicKey} 
+                      onChange={e => setPaymentKeys({ ...paymentKeys, paystackPublicKey: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Paystack Secret Key</label>
+                    <input 
+                      type="password" 
+                      placeholder="sk_test_..."
+                      required={paymentKeys.activeGateway === 'paystack'}
+                      value={paymentKeys.paystackSecretKey} 
+                      onChange={e => setPaymentKeys({ ...paymentKeys, paystackSecretKey: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 text-[10px] text-slate-550 border border-slate-150 font-mono flex flex-col space-y-1 rounded-lg">
+                  <span className="font-bold">Paystack Webhook Endpoint:</span>
+                  <span className="bg-white px-2 py-1 rounded border border-slate-200 select-all cursor-pointer">
+                    {window.location.origin}/api/webhook/paystack
+                  </span>
+                </div>
+              </div>
+
+              {/* OPay Panel */}
+              <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4">
+                <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  <span>OPay Wallet API Credentials</span>
+                </h4>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">OPay Public Key</label>
+                    <input 
+                      type="text" 
+                      placeholder="OPay Public Key"
+                      value={paymentKeys.opayPublicKey || ''} 
+                      onChange={e => setPaymentKeys({ ...paymentKeys, opayPublicKey: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">OPay Secret Key</label>
+                    <input 
+                      type="password" 
+                      placeholder="OPay Secret Key"
+                      value={paymentKeys.opaySecretKey || ''} 
+                      onChange={e => setPaymentKeys({ ...paymentKeys, opaySecretKey: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 text-[10px] text-slate-550 border border-slate-150 font-mono flex flex-col space-y-1 rounded-lg">
+                  <span className="font-bold">OPay Webhook Endpoint:</span>
+                  <span className="bg-white px-2 py-1 rounded border border-slate-200 select-all cursor-pointer">
+                    {window.location.origin}/api/webhook/opay
+                  </span>
+                </div>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* TAB: CMS PAGE SECTION BUILDER */}
+        {activeTab === 'pageCMS' && (
+          <div className="space-y-6 animate-fade-in text-left">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-slate-250 pb-3 gap-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">CMS Page Block Builder</h3>
+                <p className="text-xs text-slate-500">Edit page text sections, layouts, structure and SEO tags dynamically.</p>
+              </div>
+              <button 
+                onClick={handleSaveCmsPage}
+                disabled={settingsLoading || !cmsPage}
+                className="cursor-pointer bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 text-xs font-mono flex items-center space-x-1.5 self-end tracking-tight rounded-lg"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>Lock & Publish Page</span>
+              </button>
+            </div>
+
+            {saveSuccessMessage && (
+              <div className="p-3 bg-emerald-55 text-emerald-800 border border-emerald-200 text-xs font-mono flex items-center space-x-2 rounded-lg bg-emerald-50">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span>{saveSuccessMessage}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-slate-50 border border-slate-150 p-4 rounded-xl">
+              <div className="flex-1 space-y-1">
+                <label className="text-[9px] font-bold uppercase text-slate-500 font-mono">Selector Platform Page</label>
+                <select 
+                  id="cms_slug_selector"
+                  value={selectedCmsSlug} 
+                  onChange={e => setSelectedCmsSlug(e.target.value)}
+                  className="w-full bg-white px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 font-mono font-bold"
+                >
+                  <option value="home">Homepage Layout CMS</option>
+                  <option value="about">About Biography Page CMS</option>
+                  <option value="publications">Publications Tab CMS Header</option>
+                  <option value="blog">Research News CMS Header</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddCmsBlock}
+                disabled={!cmsPage}
+                className="bg-white shrink-0 hover:bg-slate-50 border border-slate-250 text-slate-700 text-xs px-3.5 py-2 hover:text-slate-950 flex items-center justify-center space-x-1 rounded-lg font-mono self-end cursor-pointer h-[38px]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Section Block</span>
+              </button>
+            </div>
+
+            {settingsLoading || !cmsPage ? (
+              <div className="py-20 border border-amber-100 rounded-xl bg-amber-50/20 text-center animate-pulse">
+                <Sparkles className="h-8 w-8 mx-auto text-amber-550 mb-2" />
+                <span className="font-mono text-xs text-amber-700">Configuring page block nodes from Firestore registry...</span>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                
+                {/* Meta Tags Configuration */}
+                <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4">
+                  <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
+                    <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                    <span>Search Engine Optimization (SEO Meta Tags)</span>
+                  </h4>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Meta SEO Description</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={cmsPage.metaTags?.description || ''} 
+                        onChange={e => setCmsPage({
+                          ...cmsPage,
+                          metaTags: { ...(cmsPage.metaTags || {}), description: e.target.value }
+                        })}
+                        placeholder="Search result snippet overview..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-sans focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Meta Search Keywords (Commas Separated)</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={cmsPage.metaTags?.keywords || ''} 
+                        onChange={e => setCmsPage({
+                          ...cmsPage,
+                          metaTags: { ...(cmsPage.metaTags || {}), keywords: e.target.value }
+                        })}
+                        placeholder="sociology, criminology, research..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Blocks List */}
+                <div className="space-y-4">
+                  {cmsPage.blocks.length === 0 ? (
+                    <div className="py-12 border border-dashed border-slate-200 text-center text-slate-400">
+                      <Sparkles className="h-8 w-8 mx-auto mb-2 text-slate-300 animate-pulse" />
+                      <p className="font-mono text-xs">No section blocks configured for this slug. Click 'Add Section Block' ABOVE to create one.</p>
+                    </div>
+                  ) : (
+                    cmsPage.blocks.map((block, index) => (
+                      <div key={block.id} className="border border-slate-200 p-4 rounded-xl bg-slate-50 space-y-4 relative">
+                        <div className="flex justify-between items-center border-b border-rose-50 pb-2">
+                          <span className="font-mono font-bold text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded uppercase">
+                            Block {index + 1}: {block.type} section
+                          </span>
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (index === 0) return;
+                                const updatedBlocks = [...cmsPage.blocks];
+                                const temp = updatedBlocks[index];
+                                updatedBlocks[index] = updatedBlocks[index - 1];
+                                updatedBlocks[index - 1] = temp;
+                                setCmsPage({ ...cmsPage, blocks: updatedBlocks });
+                              }}
+                              disabled={index === 0}
+                              className="p-1 border border-slate-200 bg-white rounded hover:bg-slate-100 disabled:opacity-40 cursor-pointer text-xs font-mono"
+                              title="Move Up"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (index === cmsPage.blocks.length - 1) return;
+                                const updatedBlocks = [...cmsPage.blocks];
+                                const temp = updatedBlocks[index];
+                                updatedBlocks[index] = updatedBlocks[index + 1];
+                                updatedBlocks[index + 1] = temp;
+                                setCmsPage({ ...cmsPage, blocks: updatedBlocks });
+                              }}
+                              disabled={index === cmsPage.blocks.length - 1}
+                              className="p-1 border border-slate-200 bg-white rounded hover:bg-slate-100 disabled:opacity-40 cursor-pointer text-xs font-mono"
+                              title="Move Down"
+                            >
+                              ▼
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCmsBlock(block.id)}
+                              className="p-1 border border-rose-300 text-rose-600 bg-white hover:bg-rose-50 rounded cursor-pointer"
+                              title="Remove Section Block"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid sm:grid-cols-3 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-bold uppercase text-slate-500 font-mono">Layout Block Type</label>
+                            <select 
+                              value={block.type} 
+                              onChange={e => handleUpdateCmsBlock(block.id, { type: e.target.value as any })}
+                              className="w-full bg-white px-2 py-1.5 border border-slate-250 rounded text-xs focus:outline-none focus:border-amber-500"
+                            >
+                              <option value="hero">Hero Segment (Jumbotron)</option>
+                              <option value="text">Markdown/Text Body</option>
+                              <option value="cta">Call-To-Action highlight card</option>
+                            </select>
+                          </div>
+                          
+                          <div className="space-y-1.5 sm:col-span-2">
+                            <label className="text-[9px] font-bold uppercase text-slate-500 font-mono">Primary Title heading *</label>
+                            <input 
+                              type="text" 
+                              required
+                              value={block.heading} 
+                              onChange={e => handleUpdateCmsBlock(block.id, { heading: e.target.value })}
+                              placeholder="e.g. Leading Sociological Research Initiatives"
+                              className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded text-xs focus:outline-none focus:border-amber-500 font-bold"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold uppercase text-slate-500 font-mono">Secondary Subheading label (Optional)</label>
+                          <input 
+                            type="text" 
+                            value={block.subheading || ''} 
+                            onChange={e => handleUpdateCmsBlock(block.id, { subheading: e.target.value })}
+                            placeholder="e.g. Advancing Community Policing"
+                            className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded text-xs focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold uppercase text-slate-500 font-mono">Visual Content text body (Markdown Supported) *</label>
+                          <textarea 
+                            rows={3}
+                            required
+                            value={block.content} 
+                            onChange={e => handleUpdateCmsBlock(block.id, { content: e.target.value })}
+                            placeholder="Write your research body paragraphs..."
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded text-xs font-sans focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                      </div>
+                    ))
+                  )}
+                </div>
+
               </div>
             )}
           </div>

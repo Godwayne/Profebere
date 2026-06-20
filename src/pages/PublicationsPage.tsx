@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, Book, BookOpen, FileText, ExternalLink, ChevronDown, ChevronUp, 
   Copy, Check, Heart, MessageSquare, ShoppingCart, User as UserIcon, Calendar, 
-  Lock, ArrowRight, ShieldCheck, CreditCard, Sparkles, AlertCircle, HelpCircle
+  Lock, ArrowRight, ShieldCheck, CreditCard, Sparkles, AlertCircle, HelpCircle, Star
 } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
-import { Publication, Comment, Transaction } from '../types';
+import { Publication, Comment, Transaction, FavoriteItem } from '../types';
 import { 
   addComment, fetchPublicationComments, addTransaction, 
-  updateTransactionStatus, updatePublication 
+  updateTransactionStatus, updatePublication, fetchUserFavorites, addFavorite, removeFavorite
 } from '../services/db';
 
 interface PublicationsPageProps {
@@ -21,6 +21,61 @@ export default function PublicationsPage({ publications }: PublicationsPageProps
   const [activeTab, setActiveTab] = useState<'all' | 'book' | 'journal' | 'conference'>('all');
   const [expandedPubId, setExpandedPubId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Favorites System state
+  const [userFavorites, setUserFavorites] = useState<FavoriteItem[]>([]);
+
+  // Load user favorites
+  useEffect(() => {
+    const loadFavorites = async () => {
+      if (profile) {
+        try {
+          const list = await fetchUserFavorites(profile.uid);
+          setUserFavorites(list || []);
+        } catch (e) {
+          console.error("Error loading user favorites list:", e);
+        }
+      } else {
+        setUserFavorites([]);
+      }
+    };
+    loadFavorites();
+  }, [profile]);
+
+  // Handle addition or deletion of Favorites
+  const handleToggleFavoriteItem = async (e: React.MouseEvent, pub: Publication) => {
+    e.stopPropagation();
+    if (!profile) {
+      alert("Please register or log in to add this item to your favorites.");
+      return;
+    }
+
+    const existingFav = userFavorites.find(f => f.contentId === pub.id);
+    if (existingFav) {
+      // Remove it
+      try {
+        await removeFavorite(existingFav.id, profile.uid);
+        setUserFavorites(prev => prev.filter(f => f.id !== existingFav.id));
+      } catch (err) {
+        console.error("Failed to remove favorite:", err);
+      }
+    } else {
+      // Add it
+      try {
+        const item: Omit<FavoriteItem, 'id'> = {
+          userId: profile.uid,
+          contentId: pub.id,
+          title: pub.title,
+          contentType: pub.type === 'journal' ? 'journal' : 'publication',
+          dateAdded: new Date().toISOString()
+        };
+        const saved = await addFavorite(item);
+        setUserFavorites(prev => [saved, ...prev]);
+      } catch (err: any) {
+        alert(err.message || "Failed to add to favorites.");
+      }
+    }
+  };
 
   // Comments and feedback state
   const [commentsMap, setCommentsMap] = useState<Record<string, Comment[]>>({});
@@ -198,23 +253,56 @@ export default function PublicationsPage({ publications }: PublicationsPageProps
 
       const handler = (window as any).PaystackPop.setup({
         key: 'pk_test_d34bbf335e2365a12ecb7fe8991a2eb345fbc67a', // Valid mock developer testing public key
-        email: profile.email,
+        email: profile?.email || user?.email || '',
         amount: priceAmount * 100, // Paystack requires kobo units
         currency: 'NGN',
         ref: reference,
-        callback: async (response: any) => {
+        callback: function(response: any) {
           // Response came from paystack - verify ref on backend or directly update
-          await updateTransactionStatus(addedTxn.id, 'success');
-          await addPurchasedPublication(checkoutPub.id);
-          
-          setPaymentSuccess(true);
-          setProcessingPayment(false);
-          setTimeout(() => setCheckoutPub(null), 2500);
+          updateTransactionStatus(addedTxn.id, 'success')
+            .then(() => addPurchasedPublication(checkoutPub.id))
+            .then(() => {
+              setPaymentSuccess(true);
+              setProcessingPayment(false);
+              setTimeout(() => setCheckoutPub(null), 2500);
+            })
+            .catch((err) => {
+              console.error("Error updating transaction status after payment:", err);
+              setPaymentSuccess(true);
+              setProcessingPayment(false);
+              setTimeout(() => setCheckoutPub(null), 2500);
+            });
         },
-        onClose: () => {
+        onSuccess: function(response: any) {
+          updateTransactionStatus(addedTxn.id, 'success')
+            .then(() => addPurchasedPublication(checkoutPub.id))
+            .then(() => {
+              setPaymentSuccess(true);
+              setProcessingPayment(false);
+              setTimeout(() => setCheckoutPub(null), 2500);
+            })
+            .catch((err) => {
+              console.error("Error updating transaction status after payment:", err);
+              setPaymentSuccess(true);
+              setProcessingPayment(false);
+              setTimeout(() => setCheckoutPub(null), 2500);
+            });
+        },
+        onClose: function() {
           setPaymentError("Payment process canceled by checkout user.");
-          updateTransactionStatus(addedTxn.id, 'failed');
-          setProcessingPayment(false);
+          updateTransactionStatus(addedTxn.id, 'failed')
+            .catch(e => console.error(e))
+            .finally(() => {
+              setProcessingPayment(false);
+            });
+        },
+        onCancel: function() {
+          setPaymentError("Payment process canceled by checkout user.");
+          updateTransactionStatus(addedTxn.id, 'failed')
+            .catch(e => console.error(e))
+            .finally(() => {
+              setProcessingPayment(false);
+            });
         }
       });
 
@@ -304,8 +392,9 @@ export default function PublicationsPage({ publications }: PublicationsPageProps
             const isExpanded = expandedPubId === pub.id;
             const isCopied = copiedId === pub.id;
 
-            // Check if liked or purchased
+            // Check if liked or purchased or favorited
             const isLiked = profile ? (profile.likedPublications || []).includes(pub.id) : false;
+            const isFavorited = userFavorites.some(f => f.contentId === pub.id);
             const isUnlocked = pub.isPaid 
               ? (profile ? (profile.purchasedPublications || []).includes(pub.id) : false)
               : true;
@@ -391,6 +480,18 @@ export default function PublicationsPage({ publications }: PublicationsPageProps
                       >
                         <Heart className={`h-3 w-3 ${isLiked ? 'fill-rose-600' : ''}`} />
                         <span>Like {pub.likesCount && pub.likesCount > 0 ? `(${pub.likesCount})` : ''}</span>
+                      </button>
+
+                      {/* Deployed Star Favorite button */}
+                      <button
+                        onClick={(e) => handleToggleFavoriteItem(e, pub)}
+                        className={`inline-flex items-center space-x-1.5 text-[9px] uppercase tracking-widest font-bold transition cursor-pointer ${
+                          isFavorited ? 'text-amber-500 font-black' : 'text-navy/60 hover:text-amber-500'
+                        }`}
+                        title={isFavorited ? "Remove from Favorites" : "Add to Favorites"}
+                      >
+                        <Star className={`h-3.5 w-3.5 ${isFavorited ? 'fill-amber-500' : ''}`} />
+                        <span>{isFavorited ? "Favorited" : "Favorite"}</span>
                       </button>
 
                       {/* Copy Citation */}

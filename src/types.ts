@@ -87,3 +87,49 @@ export interface ContactMessage {
   date: string;
   read: boolean;
 }
+
+export interface DonationSettings {
+  enabled: boolean;
+  title: string;
+  description: string;
+  suggestedAmounts: number[];
+}
+
+export interface PaymentKeys {
+  paystackPublicKey: string;
+  paystackSecretKey: string;
+  opayPublicKey?: string;
+  opaySecretKey?: string;
+  activeGateway: 'paystack' | 'opay';
+  paymentSystemsEnabled: boolean;
+}
+
+export interface FavoriteItem {
+  id: string;
+  userId: string;
+  contentId: string;
+  contentType: 'journal' | 'article' | 'publication' | 'blog' | 'project';
+  title: string;
+  dateAdded: string;
+}
+
+export interface CMSBlock {
+  id: string;
+  type: 'hero' | 'text' | 'features';
+  heading?: string;
+  subheading?: string;
+  content?: string;
+  image?: string;
+  order: number;
+}
+
+export interface CMSPage {
+  slug: string;
+  title: string;
+  blocks: CMSBlock[];
+  metaTags?: {
+    description?: string;
+    keywords?: string;
+  };
+}
+

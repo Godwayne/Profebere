@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../components/AuthContext';
-import { Publication, Transaction, Comment } from '../types';
-import { fetchUserTransactions, fetchAllComments, fetchPublications } from '../services/db';
+import { Publication, Transaction, Comment, FavoriteItem } from '../types';
+import { fetchUserTransactions, fetchAllComments, fetchPublications, fetchUserFavorites, removeFavorite } from '../services/db';
 import { 
   User as UserIcon, BookOpen, Heart, MessageSquare, CreditCard, 
   Download, ArrowRight, Calendar, Bookmark, CheckCircle2, AlertTriangle, ExternalLink
@@ -12,37 +12,50 @@ export default function UserDashboard() {
   const [publications, setPublications] = useState<Publication[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'downloads' | 'likes' | 'comments' | 'ledger'>('overview');
 
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [viewingPub, setViewingPub] = useState<Publication | null>(null);
 
+  const loadDashboardData = async () => {
+    if (!profile) return;
+    try {
+      const [allPubs, userTxns, allComments, userFavs] = await Promise.all([
+        fetchPublications(),
+        fetchUserTransactions(profile.uid),
+        fetchAllComments(),
+        fetchUserFavorites(profile.uid)
+      ]);
+
+      setPublications(allPubs);
+      setTransactions(userTxns || []);
+      setFavorites(userFavs || []);
+      
+      // Filter user comments
+      const userComments = allComments.filter(c => c.userId === profile.uid);
+      setComments(userComments);
+    } catch (err) {
+      console.error("Error loading dashboard utilities", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadDashboardData = async () => {
-      if (!profile) return;
-      try {
-        const [allPubs, userTxns, allComments] = await Promise.all([
-          fetchPublications(),
-          fetchUserTransactions(profile.uid),
-          fetchAllComments()
-        ]);
-
-        setPublications(allPubs);
-        setTransactions(userTxns || []);
-        
-        // Filter user comments
-        const userComments = allComments.filter(c => c.userId === profile.uid);
-        setComments(userComments);
-      } catch (err) {
-        console.error("Error loading dashboard utilities", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadDashboardData();
   }, [profile]);
+
+  const handleRemoveFavoriteItem = async (favId: string) => {
+    try {
+      if (!profile) return;
+      await removeFavorite(favId, profile.uid);
+      setFavorites(prev => prev.filter(f => f.id !== favId));
+    } catch (err) {
+      console.error("Error removing favorite:", err);
+    }
+  };
 
   if (!profile) {
     return (
@@ -276,7 +289,7 @@ export default function UserDashboard() {
               </div>
             )}
 
-            {/* LIKED PUBLICATIONS */}
+            {/* LIKED PUBLICATIONS & DEPLOYED FAVORITES */}
             {activeTab === 'likes' && (
               <div className="space-y-6">
                 <div>
@@ -285,7 +298,7 @@ export default function UserDashboard() {
                 </div>
 
                 {likedPubs.length === 0 ? (
-                  <div className="py-12 border border-dashed border-navy/15 text-center bg-[#fdfcf9]">
+                  <div className="py-8 border border-dashed border-navy/15 text-center bg-[#fdfcf9]">
                     <Heart className="h-8 w-8 text-navy/40 mx-auto mb-2" />
                     <p className="font-mono text-xs text-navy/70 uppercase">No bookmarks mapped.</p>
                   </div>
@@ -309,6 +322,48 @@ export default function UserDashboard() {
                     ))}
                   </div>
                 )}
+
+                {/* DEDICATED FAVORITES SYSTEM SECTION */}
+                <div className="pt-6 border-t border-navy/10 space-y-4">
+                  <div>
+                    <h3 className="font-serif font-bold text-base text-navy uppercase tracking-tight mb-1">Durable Starred Favorites</h3>
+                    <p className="text-slate-500 text-xs">Starred entries persisted directly onto our Firebase firestore data servers.</p>
+                  </div>
+                  
+                  {favorites.length === 0 ? (
+                    <div className="py-6 border border-dashed border-navy/10 text-center bg-[#fdfcf9]">
+                      <Bookmark className="h-6 w-6 text-navy/35 mx-auto mb-1.5 animate-pulse" />
+                      <p className="font-mono text-[9px] uppercase text-navy/60">No stored favorites on remote server.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {favorites.map(fav => {
+                        return (
+                          <div key={fav.id} className="p-4 bg-white border border-navy/10 shadow-xs flex flex-col justify-between space-y-2 rounded text-left">
+                            <div>
+                              <span className="text-[9px] uppercase font-mono font-bold text-[#D4AF37] tracking-widest bg-amber-50 px-2 py-0.5 border border-amber-100">
+                                {fav.contentType || 'Publication'}
+                              </span>
+                              <h4 className="font-serif font-bold text-xs text-navy mt-1 line-clamp-2">
+                                {fav.title}
+                              </h4>
+                            </div>
+                            <div className="flex items-center justify-between pt-2 border-t border-navy/5">
+                              <span className="font-mono text-[9px] text-slate-400">Added {new Date(fav.createdAt).toLocaleDateString()}</span>
+                              <button
+                                onClick={() => handleRemoveFavoriteItem(fav.id)}
+                                className="cursor-pointer font-mono text-[9px] uppercase font-bold text-rose-600 hover:text-rose-800"
+                              >
+                                Remove Favorite
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
 

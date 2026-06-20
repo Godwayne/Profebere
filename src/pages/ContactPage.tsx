@@ -1,10 +1,14 @@
-import React, { useState, ChangeEvent, FormEvent } from 'react';
-import { Mail, Phone, Building, CheckCircle2, Send, Loader2, Heart, CreditCard, Sparkles, ShieldCheck, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import { Mail, Phone, Building, CheckCircle2, Send, Loader2, Heart, CreditCard, Sparkles, ShieldCheck, HelpCircle, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
-import { addMessage, addTransaction, updateTransactionStatus } from '../services/db';
-import { Transaction } from '../types';
+import { addMessage, addTransaction, updateTransactionStatus, fetchDonationSettings, fetchPaymentKeys } from '../services/db';
+import { Transaction, DonationSettings, PaymentKeys } from '../types';
 
-export default function ContactPage() {
+interface ContactPageProps {
+  scrollToDonation?: boolean;
+}
+
+export default function ContactPage({ scrollToDonation = false }: ContactPageProps) {
   const { user, profile } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
@@ -25,6 +29,55 @@ export default function ContactPage() {
   const [donatingLoading, setDonatingLoading] = useState(false);
   const [donationSuccess, setDonationSuccess] = useState(false);
   const [donationError, setDonationError] = useState('');
+
+  // DB Configured Settings States
+  const [donationSettings, setDonationSettings] = useState<DonationSettings | null>(null);
+  const [paymentKeys, setPaymentKeys] = useState<PaymentKeys | null>(null);
+
+  // Smooth scroll to donation section when requested
+  useEffect(() => {
+    if (scrollToDonation) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('criminology_don_section');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [scrollToDonation]);
+
+  // Sync profile data when loaded
+  useEffect(() => {
+    if (profile) {
+      setDonorName(profile.displayName || '');
+      setDonorEmail(profile.email || '');
+    }
+  }, [profile]);
+
+  // Load configured Settings from FireStore
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const dSettings = await fetchDonationSettings();
+        setDonationSettings(dSettings);
+        if (dSettings && dSettings.suggestedAmounts && dSettings.suggestedAmounts.length > 0) {
+          setDonationAmount(dSettings.suggestedAmounts[0]);
+        }
+      } catch (e) {
+        console.error("Error loading donation settings:", e);
+      }
+
+      try {
+        const pKeys = await fetchPaymentKeys();
+        setPaymentKeys(pKeys);
+      } catch (e) {
+        console.error("Error loading payment gateway keys:", e);
+      }
+    };
+
+    loadSettings();
+  }, []);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -126,22 +179,70 @@ export default function ContactPage() {
         throw new Error("Unable to link with Paystack network nodes. Use bypass mode for active browser sandbox preview testing.");
       }
 
+      // Check if active gateway is OPay. If so, OPay is simulated inline
+      if (paymentKeys?.activeGateway === 'opay') {
+        setDonatingLoading(true);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await updateTransactionStatus(addedTxn.id, 'success');
+        setDonationSuccess(true);
+        setDonationMessage('');
+        setDonatingLoading(false);
+        return;
+      }
+
+      const activeKey = paymentKeys?.paystackPublicKey || 'pk_test_d34bbf335e2365a12ecb7fe8991a2eb345fbc67a';
+
       const handler = (window as any).PaystackPop.setup({
-        key: 'pk_test_d34bbf335e2365a12ecb7fe8991a2eb345fbc67a', // Sandbox public key
+        key: activeKey,
         email: emailToUse,
         amount: amountNum * 100, // converted to kobos
         currency: 'NGN',
         ref: reference,
-        callback: async (response: any) => {
-          await updateTransactionStatus(addedTxn.id, 'success');
-          setDonationSuccess(true);
-          setDonationMessage('');
-          setDonatingLoading(false);
+        callback: function(response: any) {
+          updateTransactionStatus(addedTxn.id, 'success')
+            .then(() => {
+              setDonationSuccess(true);
+              setDonationMessage('');
+            })
+            .catch((err) => {
+              console.error("Error updating transaction status:", err);
+              setDonationSuccess(true);
+              setDonationMessage('');
+            })
+            .finally(() => {
+              setDonatingLoading(false);
+            });
         },
-        onClose: () => {
+        onSuccess: function(response: any) {
+          updateTransactionStatus(addedTxn.id, 'success')
+            .then(() => {
+              setDonationSuccess(true);
+              setDonationMessage('');
+            })
+            .catch((err) => {
+              console.error("Error updating transaction status:", err);
+              setDonationSuccess(true);
+              setDonationMessage('');
+            })
+            .finally(() => {
+              setDonatingLoading(false);
+            });
+        },
+        onClose: function() {
           setDonationError("Transaction canceled by user.");
-          updateTransactionStatus(addedTxn.id, 'failed');
-          setDonatingLoading(false);
+          updateTransactionStatus(addedTxn.id, 'failed')
+            .catch(e => console.error(e))
+            .finally(() => {
+              setDonatingLoading(false);
+            });
+        },
+        onCancel: function() {
+          setDonationError("Transaction canceled by user.");
+          updateTransactionStatus(addedTxn.id, 'failed')
+            .catch(e => console.error(e))
+            .finally(() => {
+              setDonatingLoading(false);
+            });
         }
       });
 
@@ -344,15 +445,23 @@ export default function ContactPage() {
           <div className="flex items-center gap-3">
             <Heart className="h-6 w-6 text-rose-600 animate-pulse fill-rose-600" />
             <h2 className="font-serif font-black text-xl md:text-2xl text-navy uppercase tracking-tight">
-              Support Criminology & Outreach Funds
+              {donationSettings?.title || "Support Criminology & Outreach Funds"}
             </h2>
           </div>
           
           <p className="text-xs text-navy/80 leading-relaxed font-light">
-            Your generous financial backing powers critical sociology investigations, field studies in Akwa Ibom correctional safety shelters, youth reform programs, and community-policing workshops. Select an amount or input a customized sum to process secure donations directly via Paystack.
+            {donationSettings?.description || "Your generous financial backing powers critical sociology investigations, field studies in Akwa Ibom correctional safety shelters, youth reform programs, and community-policing workshops. Select an amount or input a customized sum to process secure donations directly."}
           </p>
 
-          {donationSuccess ? (
+          {donationSettings && donationSettings.enabled === false ? (
+            <div className="p-6 bg-white border border-rose-200 text-center space-y-2.5 rounded-lg">
+              <ShieldAlert className="h-8 w-8 text-rose-500 mx-auto animate-bounce" />
+              <h3 className="font-serif font-bold text-sm text-rose-800 uppercase font-mono">Outreach Contributions Inactive</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                The institutional contributions portal is currently paused by administrator policy oversight. Please check back later.
+              </p>
+            </div>
+          ) : donationSuccess ? (
             <div className="p-6 bg-white border-2 border-emerald-300 text-center space-y-3 animate-scale-up">
               <Sparkles className="h-10 w-10 text-emerald-600 mx-auto" />
               <h3 className="font-serif font-bold text-xl text-emerald-800 uppercase">Philanthropic Receipt Confirmed!</h3>
@@ -408,7 +517,7 @@ export default function ContactPage() {
                 
                 {/* Speed amount badges */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {[2500, 5000, 10000, 25000, 50000].map(amt => (
+                  {(donationSettings?.suggestedAmounts || [2500, 5000, 10000, 25000, 50000]).map(amt => (
                     <button
                       key={amt}
                       type="button"
@@ -426,7 +535,7 @@ export default function ContactPage() {
                     type="button"
                     onClick={() => setDonationAmount('')}
                     className={`px-3 py-2 text-xs font-mono font-medium border cursor-pointer transition ${
-                      ![2500, 5000, 10000, 25000, 50000].includes(Number(donationAmount)) 
+                      !(donationSettings?.suggestedAmounts || [2500, 5000, 10000, 25000, 50000]).includes(Number(donationAmount)) 
                         ? 'bg-navy text-gold border-navy font-bold' 
                         : 'bg-[#fdfcf9] text-navy/80 hover:bg-navy/5 border-navy/10'
                     }`}

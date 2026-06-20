@@ -135,5 +135,25 @@ service cloud.firestore {
       // Admins manage state moderation and deletions
       allow update, delete: if isAdmin();
     }
+
+    // --- Settings Collection (Donation Customizer & Active Payment Configs) ---
+    match /settings/{settingsId} {
+      // Anyone can read donation settings, only admins can view sensitive key configs
+      allow read: if settingsId == "donation" || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // --- Favorites Collection (Bookmarked Journals, Articles, Publications) ---
+    match /favorites/{favId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // --- Pages Collection (Admin CMS Blocks Builder) ---
+    match /pages/{slug} {
+      allow get, list: if true;
+      allow write: if isAdmin();
+    }
   }
 }

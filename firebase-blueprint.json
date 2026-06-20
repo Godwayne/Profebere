@@ -220,6 +220,56 @@
         "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }
       },
       "required": ["userId", "userName", "publicationId", "publicationTitle", "text", "date", "status"]
+    },
+    "DonationSettings": {
+      "title": "DonationSettings",
+      "description": "Customizable configuration for portal-wide donations",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "suggestedAmounts": { "type": "array", "items": { "type": "number" } }
+      },
+      "required": ["enabled", "title", "description", "suggestedAmounts"]
+    },
+    "PaymentKeys": {
+      "title": "PaymentKeys",
+      "description": "Administrator key details for pay gateways",
+      "type": "object",
+      "properties": {
+        "paystackPublicKey": { "type": "string" },
+        "paystackSecretKey": { "type": "string" },
+        "opayPublicKey": { "type": "string" },
+        "opaySecretKey": { "type": "string" },
+        "activeGateway": { "type": "string", "enum": ["paystack", "opay"] },
+        "paymentSystemsEnabled": { "type": "boolean" }
+      },
+      "required": ["paystackPublicKey", "paystackSecretKey", "activeGateway", "paymentSystemsEnabled"]
+    },
+    "FavoriteItem": {
+      "title": "FavoriteItem",
+      "description": "Bookmarked content details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "contentId": { "type": "string" },
+        "contentType": { "type": "string", "enum": ["journal", "article", "publication", "blog", "project"] },
+        "title": { "type": "string" },
+        "dateAdded": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "contentId", "contentType", "title", "dateAdded"]
+    },
+    "CMSPage": {
+      "title": "CMSPage",
+      "description": "Dynamic layout configuration blocks managed by admin",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "blocks": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["slug", "title", "blocks"]
     }
   },
   "firestore": {
@@ -254,6 +304,18 @@
     "/comments/{commentId}": {
       "schema": { "$ref": "#/entities/Comment" },
       "description": "Contains moderated feedback comments on publications"
+    },
+    "/settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/DonationSettings" },
+      "description": "Configuration for donations or payment operations"
+    },
+    "/favorites/{favId}": {
+      "schema": { "$ref": "#/entities/FavoriteItem" },
+      "description": "Individual bookmarks linked to user profiles"
+    },
+    "/pages/{slug}": {
+      "schema": { "$ref": "#/entities/CMSPage" },
+      "description": "Dynamic block configurations for visual CMS pages"
     }
   }
 }

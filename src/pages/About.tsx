@@ -1,4 +1,7 @@
-import { FileText, Download, GraduationCap, Briefcase, Award, BookOpen } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Download, GraduationCap, Briefcase, Award, BookOpen, Sparkles } from 'lucide-react';
+import { fetchCMSPage } from '../services/db';
+import { CMSPage } from '../types';
 import profProfileImg from '../assets/images/faculty_prof_ebere_1781985440905.jpg';
 
 interface AboutProps {
@@ -6,12 +9,61 @@ interface AboutProps {
 }
 
 export default function About({ onNavigate }: AboutProps) {
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('about');
+        if (page) {
+          setCmsPage(page);
+        }
+      } catch (e) {
+        console.error("Error loading about page CMS content:", e);
+      }
+    };
+    loadCms();
+  }, []);
+
   const handlePrintCV = () => {
     window.print();
   };
 
   return (
     <div className="space-y-16 py-4 animate-fade-in text-navy">
+      
+      {/* CMS Page Blocks Rendering if present */}
+      {cmsPage && cmsPage.blocks && cmsPage.blocks.length > 0 && (
+        <section id="cms_about_blocks" className="space-y-6 animate-fade-in bg-[#f0ece3] border border-navy/10 p-6 md:p-8 rounded text-left">
+          <div className="flex items-center space-x-2 border-b border-navy/10 pb-2">
+            <Sparkles className="h-5 w-5 text-amber-600 animate-pulse" />
+            <h2 className="font-serif font-bold text-lg uppercase tracking-tight text-navy">
+              Special Institutional/Personal Updates (CMS)
+            </h2>
+          </div>
+          <div className="grid gap-6 pt-2">
+            {cmsPage.blocks.map((block) => (
+              <div 
+                key={block.id} 
+                className="p-6 bg-white border border-navy/15 shadow-sm rounded text-left"
+              >
+                {block.subheading && (
+                  <span className="text-[9px] uppercase font-mono font-bold tracking-widest text-[#002147]/60 block mb-1">
+                    {block.subheading}
+                  </span>
+                )}
+                <h3 className="font-serif font-bold text-base text-navy mb-2 border-b border-navy/5 pb-1">
+                  {block.heading}
+                </h3>
+                <p className="text-xs text-navy/85 whitespace-pre-line leading-relaxed">
+                  {block.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Bio Header */}
       <section id="bio_intro" className="grid md:grid-cols-12 gap-10 items-start">
         <div className="md:col-span-4 space-y-6">

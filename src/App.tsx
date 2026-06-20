@@ -84,8 +84,8 @@ function AppContent() {
           {currentPage === 'blog' && (
             <BlogPage blogPosts={blogPosts} />
           )}
-          {currentPage === 'contact' && (
-            <ContactPage />
+          {(currentPage === 'contact' || currentPage === 'donate') && (
+            <ContactPage scrollToDonation={currentPage === 'donate'} />
           )}
           {currentPage === 'admin' && (
             <AdminDashboard 

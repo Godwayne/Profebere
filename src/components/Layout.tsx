@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Menu, X, GraduationCap, MapPin, Mail, ChevronRight, BookOpen, 
-  Linkedin, Twitter, Globe, Lock, ShieldCheck, User as UserIcon
+  Linkedin, Twitter, Globe, Lock, ShieldCheck, User as UserIcon, Heart
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
@@ -23,6 +23,7 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
     { id: 'gallery', label: 'Fieldwork' },
     { id: 'blog', label: 'News & Blog' },
     { id: 'contact', label: 'Official Mail' },
+    { id: 'donate', label: 'Research Donation', icon: Heart },
     { id: 'dashboard', label: user ? 'Scholar Console' : 'Scholar Gateway', icon: UserIcon },
     { id: 'admin', label: 'Admin Portal', icon: Lock }
   ];

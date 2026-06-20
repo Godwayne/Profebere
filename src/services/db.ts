@@ -14,7 +14,7 @@ import {
 import { db } from '../firebase';
 import { 
   Publication, BlogPost, Project, GalleryImage, ContactMessage,
-  UserProfile, Transaction, Comment 
+  UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage 
 } from '../types';
 
 // ==========================================
@@ -809,5 +809,189 @@ export const deleteComment = async (id: string): Promise<void> => {
     const localComments: Comment[] = JSON.parse(localStorage.getItem('okorie_comments') || '[]');
     const updated = localComments.filter(c => c.id !== id);
     localStorage.setItem('okorie_comments', JSON.stringify(updated));
+  }
+};
+
+// ==========================================
+// DYNAMIC CONFIGURATION & CMS OPERATIONS
+// ==========================================
+
+export const DEFAULT_DONATION_SETTINGS: DonationSettings = {
+  enabled: true,
+  title: "Support This Research Platform",
+  description: "Your financial contributions help sustain academic investigations into local security systems, youth delinquency rehab systems, and community growth projects in Akwa Ibom State and broader Nigeria.",
+  suggestedAmounts: [2000, 5000, 10000, 25000, 50000]
+};
+
+export const DEFAULT_PAYMENT_KEYS: PaymentKeys = {
+  paystackPublicKey: "pk_test_d3a8e9e1c2b5b15b3c53046bcbf80c8df949e25d",
+  paystackSecretKey: "sk_test_paystack_secret_key_placeholder",
+  opayPublicKey: "",
+  opaySecretKey: "",
+  activeGateway: "paystack",
+  paymentSystemsEnabled: true
+};
+
+// --- DONATION SETTINGS ---
+export const fetchDonationSettings = async (): Promise<DonationSettings> => {
+  try {
+    const docRef = doc(db, 'settings', 'donation');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as DonationSettings;
+    }
+    await setDoc(docRef, DEFAULT_DONATION_SETTINGS);
+    return DEFAULT_DONATION_SETTINGS;
+  } catch (err) {
+    console.warn("Firestore fetchDonationSettings failed, falling back to local:", err);
+    const local = localStorage.getItem('okorie_donation_settings');
+    return local ? JSON.parse(local) : DEFAULT_DONATION_SETTINGS;
+  }
+};
+
+export const updateDonationSettings = async (settings: DonationSettings): Promise<void> => {
+  try {
+    const docRef = doc(db, 'settings', 'donation');
+    await setDoc(docRef, settings, { merge: true });
+    localStorage.setItem('okorie_donation_settings', JSON.stringify(settings));
+  } catch (err) {
+    console.error("Firestore updateDonationSettings failed:", err);
+    localStorage.setItem('okorie_donation_settings', JSON.stringify(settings));
+  }
+};
+
+// --- PAYMENT KEYS SETTINGS ---
+export const fetchPaymentKeys = async (): Promise<PaymentKeys> => {
+  try {
+    const docRef = doc(db, 'settings', 'payment');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as PaymentKeys;
+    }
+    await setDoc(docRef, DEFAULT_PAYMENT_KEYS);
+    return DEFAULT_PAYMENT_KEYS;
+  } catch (err) {
+    console.warn("Firestore fetchPaymentKeys failed, falling back to local:", err);
+    const local = localStorage.getItem('okorie_payment_keys');
+    return local ? JSON.parse(local) : DEFAULT_PAYMENT_KEYS;
+  }
+};
+
+export const updatePaymentKeys = async (keys: PaymentKeys): Promise<void> => {
+  try {
+    const docRef = doc(db, 'settings', 'payment');
+    await setDoc(docRef, keys, { merge: true });
+    localStorage.setItem('okorie_payment_keys', JSON.stringify(keys));
+  } catch (err) {
+    console.error("Firestore updatePaymentKeys failed:", err);
+    localStorage.setItem('okorie_payment_keys', JSON.stringify(keys));
+  }
+};
+
+// --- FAVORITES SYSTEM ---
+export const fetchUserFavorites = async (userId: string): Promise<FavoriteItem[]> => {
+  try {
+    const q = query(collection(db, 'favorites'), where('userId', '==', userId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FavoriteItem));
+  } catch (err) {
+    console.warn("Firestore fetchUserFavorites failed, falling back to local storage:", err);
+    const local: FavoriteItem[] = JSON.parse(localStorage.getItem('okorie_favorites') || '[]');
+    return local.filter(f => f.userId === userId);
+  }
+};
+
+export const addFavorite = async (favorite: Omit<FavoriteItem, 'id'>): Promise<FavoriteItem> => {
+  try {
+    const q = query(
+      collection(db, 'favorites'),
+      where('userId', '==', favorite.userId),
+      where('contentId', '==', favorite.contentId)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      throw new Error("Favorite item already exists.");
+    }
+    const docRef = await addDoc(collection(db, 'favorites'), favorite);
+    const newFav = { id: docRef.id, ...favorite };
+    
+    const local: FavoriteItem[] = JSON.parse(localStorage.getItem('okorie_favorites') || '[]');
+    localStorage.setItem('okorie_favorites', JSON.stringify([newFav, ...local]));
+    return newFav;
+  } catch (err) {
+    console.warn("Firestore addFavorite failed, falling back to local:", err);
+    const local: FavoriteItem[] = JSON.parse(localStorage.getItem('okorie_favorites') || '[]');
+    const exists = local.some(f => f.userId === favorite.userId && f.contentId === favorite.contentId);
+    if (exists) {
+      throw new Error("Favorite item already exists.");
+    }
+    const newFav = { id: 'local_' + Date.now(), ...favorite };
+    localStorage.setItem('okorie_favorites', JSON.stringify([newFav, ...local]));
+    return newFav;
+  }
+};
+
+export const removeFavorite = async (id: string, userId: string, contentId?: string): Promise<void> => {
+  try {
+    if (id && !id.startsWith('local_')) {
+      await deleteDoc(doc(db, 'favorites', id));
+    } else if (userId && contentId) {
+      const q = query(
+        collection(db, 'favorites'),
+        where('userId', '==', userId),
+        where('contentId', '==', contentId)
+      );
+      const snapshot = await getDocs(q);
+      await Promise.all(snapshot.docs.map(doc => deleteDoc(doc.ref)));
+    }
+    
+    const local: FavoriteItem[] = JSON.parse(localStorage.getItem('okorie_favorites') || '[]');
+    const updated = local.filter(f => {
+      if (id && f.id === id) return false;
+      if (userId && contentId && f.userId === userId && f.contentId === contentId) return false;
+      return true;
+    });
+    localStorage.setItem('okorie_favorites', JSON.stringify(updated));
+  } catch (err) {
+    console.error("Firestore removeFavorite failed:", err);
+    const local: FavoriteItem[] = JSON.parse(localStorage.getItem('okorie_favorites') || '[]');
+    const updated = local.filter(f => {
+      if (id && f.id === id) return false;
+      if (userId && contentId && f.userId === userId && f.contentId === contentId) return false;
+      return true;
+    });
+    localStorage.setItem('okorie_favorites', JSON.stringify(updated));
+  }
+};
+
+// --- CMS PAGES ---
+export const fetchCMSPage = async (slug: string): Promise<CMSPage | null> => {
+  try {
+    const docRef = doc(db, 'pages', slug);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as CMSPage;
+    }
+    return null;
+  } catch (err) {
+    console.warn("Firestore fetchCMSPage failed, falling back to local:", err);
+    const local: CMSPage[] = JSON.parse(localStorage.getItem('okorie_cms_pages') || '[]');
+    return local.find(p => p.slug === slug) || null;
+  }
+};
+
+export const saveCMSPage = async (slug: string, pageData: CMSPage): Promise<void> => {
+  try {
+    const docRef = doc(db, 'pages', slug);
+    await setDoc(docRef, pageData, { merge: true });
+    
+    const local: CMSPage[] = JSON.parse(localStorage.getItem('okorie_cms_pages') || '[]');
+    const updated = [pageData, ...local.filter(p => p.slug !== slug)];
+    localStorage.setItem('okorie_cms_pages', JSON.stringify(updated));
+  } catch (err) {
+    console.error("Firestore saveCMSPage failed:", err);
+    const local: CMSPage[] = JSON.parse(localStorage.getItem('okorie_cms_pages') || '[]');
+    const updated = [pageData, ...local.filter(p => p.slug !== slug)];
+    localStorage.setItem('okorie_cms_pages', JSON.stringify(updated));
   }
 };

@@ -1,5 +1,7 @@
-import { BookOpen, GraduationCap, Award, FileText, ArrowRight, MapPin, Mail, ChevronRight } from 'lucide-react';
-import { BlogPost, Publication } from '../types';
+import { useState, useEffect } from 'react';
+import { BookOpen, GraduationCap, Award, FileText, ArrowRight, MapPin, Mail, ChevronRight, Sparkles, Heart } from 'lucide-react';
+import { BlogPost, Publication, CMSPage } from '../types';
+import { fetchCMSPage } from '../services/db';
 import profProfileImg from '../assets/images/faculty_prof_ebere_1781985440905.jpg';
 
 interface HomeProps {
@@ -9,8 +11,63 @@ interface HomeProps {
 }
 
 export default function Home({ onNavigate, latestBlogPosts, recentPublications }: HomeProps) {
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('home');
+        if (page) {
+          setCmsPage(page);
+        }
+      } catch (e) {
+        console.error("Error loading home page CMS content:", e);
+      }
+    };
+    loadCms();
+  }, []);
+
   return (
     <div className="space-y-16 py-4 animate-fade-in text-navy">
+      
+      {/* CMS Page Blocks Rendering if present */}
+      {cmsPage && cmsPage.blocks && cmsPage.blocks.length > 0 && (
+        <section id="cms_home_blocks" className="space-y-8 animate-fade-in bg-amber-500/5 border border-amber-500/10 p-6 md:p-8 rounded-xl text-left">
+          <div className="flex items-center space-x-2 border-b border-navy/10 pb-2">
+            <Sparkles className="h-5 w-5 text-amber-600 animate-pulse" />
+            <h2 className="font-serif font-bold text-lg uppercase tracking-tight text-navy">
+              Academic Bulletins & Section Updates (CMS)
+            </h2>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6 pt-2">
+            {cmsPage.blocks.map((block) => (
+              <div 
+                key={block.id} 
+                className={`p-6 border transition hover:shadow-md rounded text-left ${
+                  block.type === 'hero' 
+                    ? 'bg-navy text-white border-gold/20 col-span-full' 
+                    : block.type === 'cta'
+                    ? 'bg-amber-50 border-amber-200' 
+                    : 'bg-white border-navy/10'
+                }`}
+              >
+                {block.subheading && (
+                  <span className="text-[9px] uppercase font-mono font-bold tracking-widest text-amber-600 block mb-1">
+                    {block.subheading}
+                  </span>
+                )}
+                <h3 className="font-serif font-bold text-lg text-navy mb-2 border-b border-navy/5 pb-1">
+                  {block.heading}
+                </h3>
+                <p className="text-xs text-navy/85 whitespace-pre-line leading-relaxed font-sans">
+                  {block.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Hero Section */}
       <section id="academic_hero" className="relative bg-navy text-[#fdfcf9] rounded-none overflow-hidden border border-gold/15 shadow-xl mr-1">
         <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/95 to-transparent opacity-95 z-10" />
@@ -59,6 +116,18 @@ export default function Home({ onNavigate, latestBlogPosts, recentPublications }
               >
                 <span>Get in Touch</span>
                 <div className="w-4 h-[1px] bg-white"></div>
+              </button>
+
+              <button 
+                id="donate_hero_btn"
+                onClick={() => onNavigate('donate')}
+                className="inline-flex items-center justify-between bg-[#D4AF37] hover:bg-[#b8942a] text-navy px-6 py-4 rounded-none text-xs uppercase tracking-widest font-bold transition-all duration-300 cursor-pointer gap-4 border border-gold/40 shadow-md font-sans"
+              >
+                <span className="flex items-center gap-1.5 font-extrabold uppercase">
+                  <Heart className="h-4 w-4 fill-navy" />
+                  Support Outreach
+                </span>
+                <div className="w-4 h-[1px] bg-navy"></div>
               </button>
             </div>
           </div>
