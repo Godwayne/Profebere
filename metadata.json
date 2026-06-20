@@ -1,0 +1,6 @@
+{
+  "name": "Prof. Ebere Okorie Academic Website",
+  "description": "Professional full-stack academic website for Prof. Ebere Okorie, Professor of Sociology and Anthropology at the University of Uyo, Nigeria. Features publications, research, gallery, news, and an admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

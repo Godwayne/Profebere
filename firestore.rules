@@ -1,0 +1,97 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper to check if user is admin
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "admin@okorie.edu.ng" ||
+        request.auth.token.email == "younggist212@gmail.com"
+      );
+    }
+
+    // --- Publications Collection ---
+    match /publications/{pubId} {
+      // Anyone can view academic publications
+      allow get, list: if true;
+      
+      // Only authenticated administrator can modify publications
+      allow create: if isAdmin() && 
+        isValidId(pubId) && 
+        request.resource.data.title is string && request.resource.data.title.size() <= 300 &&
+        request.resource.data.authors is string && request.resource.data.authors.size() <= 200;
+        
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Projects Collection ---
+    match /projects/{projectId} {
+      // Anyone can view public research projects
+      allow get, list: if true;
+      
+      // Only authenticated administrator can modify projects
+      allow create: if isAdmin() && 
+        isValidId(projectId) && 
+        request.resource.data.title is string && request.resource.data.title.size() <= 300 &&
+        request.resource.data.status is string && request.resource.data.status.size() <= 50;
+        
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Blog Collection ---
+    match /blog/{blogId} {
+      // Anyone can read blog posts
+      allow get, list: if true;
+      
+      // Only authenticated administrator can publish blog articles
+      allow create: if isAdmin() && 
+        isValidId(blogId) && 
+        request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
+        request.resource.data.content is string && request.resource.data.content.size() <= 20000;
+        
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Gallery Collection ---
+    match /gallery/{imageId} {
+      // Anyone can view the visual archives
+      allow get, list: if true;
+      
+      // Only authenticated administrator can add/delete images
+      allow create: if isAdmin() && 
+        isValidId(imageId) && 
+        request.resource.data.imageUrl is string && request.resource.data.imageUrl.size() <= 1000;
+        
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Messages Collection (Contact Portal) ---
+    match /messages/{messageId} {
+      // Anyone is permitted to transmit a new correspondence letter (contact form)
+      allow create: if true &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 150 &&
+        request.resource.data.email is string && request.resource.data.email.size() <= 150 &&
+        request.resource.data.subject is string && request.resource.data.subject.size() <= 200 &&
+        request.resource.data.message is string && request.resource.data.message.size() <= 5000;
+      
+      // Only logged-in administrators can query, view details, mark as read, or delete inbox messages
+      allow get, list, update, delete: if isAdmin();
+    }
+  }
+}

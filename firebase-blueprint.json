@@ -1,0 +1,198 @@
+{
+  "entities": {
+    "Publication": {
+      "title": "Publication",
+      "description": "An academic paper, book, or article authored by the professor",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the publication"
+        },
+        "authors": {
+          "type": "string",
+          "description": "Comma-separated list of authors"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["journal", "book", "conference", "other"],
+          "description": "Type of the publication"
+        },
+        "publisher": {
+          "type": "string",
+          "description": "The publishing company or journal name"
+        },
+        "year": {
+          "type": "integer",
+          "description": "Year of publication"
+        },
+        "link": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL link to the publication"
+        },
+        "description": {
+          "type": "string",
+          "description": "Abstract or short description of the work"
+        },
+        "dateAdded": {
+          "type": "string",
+          "format": "date",
+          "description": "Timestamp when this item was logged"
+        }
+      },
+      "required": ["title", "authors", "type", "year"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A research project or grant in which the professor is involved",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the research project"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ongoing", "completed"],
+          "description": "The active status of the study"
+        },
+        "role": {
+          "type": "string",
+          "description": "The specific role of the professor (e.g. Principal Investigator)"
+        },
+        "description": {
+          "type": "string",
+          "description": "The abstract or focus area of the research"
+        },
+        "timeline": {
+          "type": "string",
+          "description": "Years active (e.g. 2021 - 2023)"
+        },
+        "funding": {
+          "type": "string",
+          "description": "Sponsoring bodies or grants"
+        }
+      },
+      "required": ["title", "status", "role", "description"]
+    },
+    "BlogPost": {
+      "title": "BlogPost",
+      "description": "An academic blog post or department news feed item",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The headline of the article"
+        },
+        "content": {
+          "type": "string",
+          "description": "Full markdown or text body of the post"
+        },
+        "excerpt": {
+          "type": "string",
+          "description": "Short summary of the article"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of publication"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Announcements", "Academic Notes", "Conferences"],
+          "description": "The category classification"
+        },
+        "imageUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "The main visual header link"
+        }
+      },
+      "required": ["title", "content", "excerpt", "date", "category"]
+    },
+    "GalleryImage": {
+      "title": "GalleryImage",
+      "description": "A photographed record of professional academic events",
+      "type": "object",
+      "properties": {
+        "imageUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source URL of the illustration or photo"
+        },
+        "caption": {
+          "type": "string",
+          "description": "Contextual description of the photographed event"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Approximate date of the photograph"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Lectures", "Conferences", "Fieldwork"],
+          "description": "Category classification"
+        }
+      },
+      "required": ["imageUrl", "caption", "date", "category"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "An inquiry message transmitted via the contact portal",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The inquirer's full name"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The inquirer's return email address"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Title of the correspondence"
+        },
+        "message": {
+          "type": "string",
+          "description": "Full message content"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date and hour of receipt"
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Read status indicator"
+        }
+      },
+      "required": ["name", "email", "subject", "message", "date", "read"]
+    }
+  },
+  "firestore": {
+    "/publications/{pubId}": {
+      "schema": { "$ref": "#/entities/Publication" },
+      "description": "Contains research publications and texts"
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Contains research grants and active investigations"
+    },
+    "/blog/{blogId}": {
+      "schema": { "$ref": "#/entities/BlogPost" },
+      "description": "Contains news feed articles and commentaries"
+    },
+    "/gallery/{imageId}": {
+      "schema": { "$ref": "#/entities/GalleryImage" },
+      "description": "Contains archived photographs from academic functions"
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ContactMessage" },
+      "description": "Contains correspondence inquiries and messages"
+    }
+  }
+}
