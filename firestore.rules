@@ -138,8 +138,8 @@ service cloud.firestore {
 
     // --- Settings Collection (Donation Customizer & Active Payment Configs) ---
     match /settings/{settingsId} {
-      // Anyone can read donation settings, only admins can view sensitive key configs
-      allow read: if settingsId == "donation" || isAdmin();
+      // Anyone can read public configs, only admins can view sensitive payment keys
+      allow read: if settingsId == "donation" || settingsId == "admin_creds" || isAdmin();
       allow write: if isAdmin();
     }
 

@@ -133,3 +133,9 @@ export interface CMSPage {
   };
 }
 
+export interface AdminSimCredentials {
+  email: string;
+  passwordHash: string;
+}
+
+

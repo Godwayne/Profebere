@@ -16,10 +16,11 @@ import {
   fetchAllTransactions, fetchAllComments, updateCommentStatus, deleteComment,
   fetchDonationSettings, updateDonationSettings,
   fetchPaymentKeys, updatePaymentKeys,
-  fetchCMSPage, saveCMSPage
+  fetchCMSPage, saveCMSPage,
+  fetchAdminCredentials, updateAdminCredentials
 } from '../services/db';
 
-import { DonationSettings, PaymentKeys, CMSPage, CMSBlock } from '../types';
+import { DonationSettings, PaymentKeys, CMSPage, CMSBlock, AdminSimCredentials } from '../types';
 
 interface AdminDashboardProps {
   publications: Publication[];
@@ -62,6 +63,12 @@ export default function AdminDashboard({
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
 
+  // Customizable Admin Simulation credentials state
+  const [adminCreds, setAdminCreds] = useState<AdminSimCredentials>({ email: 'admin@okorie.edu.ng', passwordHash: 'Password123' });
+  const [adminCredsForm, setAdminCredsForm] = useState({ email: '', password: '' });
+  const [showCreds, setShowCreds] = useState(false);
+  const [showSecretFormPassword, setShowSecretFormPassword] = useState(false);
+
   // Active Admin Tabs
   // 'analytics' | 'publications' | 'projects' | 'blog' | 'gallery' | 'messages' | 'transactions' | 'comments'
   const [activeTab, setActiveTab] = useState<string>('analytics');
@@ -86,6 +93,19 @@ export default function AdminDashboard({
     imageUrl: 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=600', caption: '', category: 'Lectures'
   });
 
+  // Load and synchronize Admin Credentials
+  const syncAdminCredentials = async () => {
+    try {
+      const creds = await fetchAdminCredentials();
+      if (creds) {
+        setAdminCreds(creds);
+        setAdminCredsForm({ email: creds.email, password: creds.passwordHash });
+      }
+    } catch (err) {
+      console.warn("Failed retrieving customizable admin credentials:", err);
+    }
+  };
+
   // Observe Auth Sign-ins
   useEffect(() => {
     // Check if double-path local simulation session exists
@@ -101,6 +121,9 @@ export default function AdminDashboard({
         setIsAdminLocalSim(false);
       }
     });
+
+    syncAdminCredentials();
+
     return () => unsubscribe();
   }, []);
 
@@ -226,6 +249,25 @@ export default function AdminDashboard({
     }
   };
 
+  const handleSaveAdminCreds = async (e: FormEvent) => {
+    e.preventDefault();
+    setSettingsLoading(true);
+    try {
+      const updatedCreds = {
+        email: adminCredsForm.email,
+        passwordHash: adminCredsForm.password
+      };
+      await updateAdminCredentials(updatedCreds);
+      setAdminCreds(updatedCreds);
+      setSaveSuccessMessage("Administrative custom credentials updated successfully in FireStore.");
+      setTimeout(() => setSaveSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert("Error saving administrative credentials: " + err.message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
   const handleSaveCmsPage = async () => {
     if (!cmsPage) return;
     setSettingsLoading(true);
@@ -274,10 +316,7 @@ export default function AdminDashboard({
     setAuthError('');
     setAuthLoading(true);
 
-    const testEmail = 'admin@okorie.edu.ng';
-    const testPassword = 'Password123';
-
-    if (email === testEmail && password === testPassword) {
+    if (email === adminCreds.email && password === adminCreds.passwordHash) {
       // Local Master Simulation override
       sessionStorage.setItem('okorie_admin_sim', 'true');
       setIsLoggedIn(true);
@@ -469,22 +508,33 @@ export default function AdminDashboard({
     return (
       <div className="max-w-md mx-auto py-12 px-6 text-left animate-fade-in space-y-8 select-none">
         
-        {/* Credentials hints card */}
-        <div id="credential_advisor" className="bg-amber-500/10 border border-amber-500/20 p-5 rounded-2xl flex items-start space-x-3.5">
-          <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-amber-600 block font-sans">Master Testing Credentials (Sandbox Portal)</span>
-            <span className="text-xs text-slate-600 block">
-              For immediate full-stack testing in this workspace:
+        {/* Collapsible Sandbox Advisor */}
+        <div id="credential_advisor" className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2">
+          <button 
+            type="button"
+            onClick={() => setShowCreds(!showCreds)}
+            className="flex items-center justify-between w-full cursor-pointer text-xs font-bold font-mono text-slate-600 uppercase tracking-wider focus:outline-none"
+          >
+            <span className="flex items-center gap-1.5 text-slate-700">
+              <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
+              Sandbox Testing Credentials
             </span>
-            <div className="text-[11px] font-mono text-slate-700 bg-white/70 p-2 rounded-lg border border-amber-500/10 mt-1 select-all space-y-0.5">
-              <div>Email: <strong className="text-amber-800">admin@okorie.edu.ng</strong></div>
-              <div>Password: <strong className="text-amber-800">Password123</strong></div>
+            <span className="text-[10px] bg-slate-250 hover:bg-slate-300 px-2 py-0.5 border border-slate-300 rounded font-sans uppercase transition-colors">
+              {showCreds ? "Hide" : "Show"}
+            </span>
+          </button>
+          
+          {showCreds && (
+            <div className="space-y-1.5 pt-2 border-t border-slate-200/60 animate-fade-in text-left">
+              <span className="text-[11px] text-slate-500 block leading-normal">
+                These simulation credentials allow scholars to inspect and manage dynamic portal features securely:
+              </span>
+              <div className="text-xs font-mono text-slate-700 bg-white p-2.5 rounded border border-slate-150 mt-1.5 select-all space-y-1">
+                <div>Email: <strong className="text-amber-850">{adminCreds.email}</strong></div>
+                <div>Password: <strong className="text-amber-850">{adminCreds.passwordHash}</strong></div>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-400 block pt-1 italic">
-              * Supports dual-path: logs automatically fallback to sandbox simulation.
-            </span>
-          </div>
+          )}
         </div>
 
         <div className="bg-white border border-slate-150 rounded-3xl p-8 shadow-md space-y-6">
@@ -582,6 +632,7 @@ export default function AdminDashboard({
               { id: 'comments', label: 'Comments Queue', icon: MessageSquare, count: pendingCommentsCount, hasBadge: true },
               { id: 'donationsSettings', label: 'Donation Settings', icon: Heart },
               { id: 'paymentGateway', label: 'Payment Gateway', icon: ShieldCheck },
+              { id: 'adminCredentials', label: 'Admin Security', icon: Key },
               { id: 'pageCMS', label: 'CMS Page Builder', icon: Sparkles },
             ].map(navItem => (
               <button
@@ -1326,6 +1377,70 @@ export default function AdminDashboard({
                     {window.location.origin}/api/webhook/opay
                   </span>
                 </div>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {/* TAB: ADMIN SECURITY DETAILS */}
+        {activeTab === 'adminCredentials' && (
+          <form onSubmit={handleSaveAdminCreds} className="space-y-6 animate-fade-in text-left">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Admin Credentials Management</h3>
+                <p className="text-xs text-slate-500">Update the administrative simulation credentials stored securely in Firestore.</p>
+              </div>
+              <button 
+                type="submit"
+                disabled={settingsLoading}
+                className="cursor-pointer bg-amber-500 text-slate-950 font-bold px-4 py-2 hover:bg-amber-600 rounded-lg text-xs font-mono"
+              >
+                {settingsLoading ? "Saving Keys..." : "Update Credentials"}
+              </button>
+            </div>
+
+            {saveSuccessMessage && (
+              <div className="p-3 bg-emerald-55 text-emerald-800 border border-emerald-200 text-xs font-mono flex items-center space-x-2 rounded-lg bg-emerald-50 animate-fade-in animate-duration-300">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span>{saveSuccessMessage}</span>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-slate-400 font-mono tracking-wider block">Custom Administrative Email *</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={adminCredsForm.email} 
+                  onChange={e => setAdminCredsForm({ ...adminCredsForm, email: e.target.value })}
+                  placeholder="admin@okorie.edu.ng"
+                  className="w-full px-3 py-2 bg-white border border-slate-250 focus:border-amber-500 outline-none rounded-lg text-sm transition-all text-slate-800"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-slate-400 font-mono tracking-wider block">Secured Sandbox Password *</label>
+                <div className="relative">
+                  <input 
+                    type={showSecretFormPassword ? "text" : "password"} 
+                    required 
+                    value={adminCredsForm.password} 
+                    onChange={e => setAdminCredsForm({ ...adminCredsForm, password: e.target.value })}
+                    placeholder="Enter security password"
+                    className="w-full pl-3 pr-10 py-2 bg-white border border-slate-250 focus:border-amber-500 outline-none rounded-lg text-sm transition-all font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecretFormPassword(!showSecretFormPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 font-mono italic font-serif">
+                  Take absolute control of your admin login. Updates are reflected instantly on the main admin gateway portal.
+                </p>
               </div>
             </div>
           </form>

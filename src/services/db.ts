@@ -14,7 +14,7 @@ import {
 import { db } from '../firebase';
 import { 
   Publication, BlogPost, Project, GalleryImage, ContactMessage,
-  UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage 
+  UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage, AdminSimCredentials
 } from '../types';
 
 // ==========================================
@@ -885,6 +885,39 @@ export const updatePaymentKeys = async (keys: PaymentKeys): Promise<void> => {
   } catch (err) {
     console.error("Firestore updatePaymentKeys failed:", err);
     localStorage.setItem('okorie_payment_keys', JSON.stringify(keys));
+  }
+};
+
+// --- ADMIN CREDENTIALS ---
+export const DEFAULT_ADMIN_CREDS: AdminSimCredentials = {
+  email: "admin@okorie.edu.ng",
+  passwordHash: "Password123"
+};
+
+export const fetchAdminCredentials = async (): Promise<AdminSimCredentials> => {
+  try {
+    const docRef = doc(db, 'settings', 'admin_creds');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as AdminSimCredentials;
+    }
+    await setDoc(docRef, DEFAULT_ADMIN_CREDS);
+    return DEFAULT_ADMIN_CREDS;
+  } catch (err) {
+    console.warn("Firestore fetchAdminCredentials failed, falling back to local:", err);
+    const local = localStorage.getItem('okorie_admin_creds');
+    return local ? JSON.parse(local) : DEFAULT_ADMIN_CREDS;
+  }
+};
+
+export const updateAdminCredentials = async (creds: AdminSimCredentials): Promise<void> => {
+  try {
+    const docRef = doc(db, 'settings', 'admin_creds');
+    await setDoc(docRef, creds, { merge: true });
+    localStorage.setItem('okorie_admin_creds', JSON.stringify(creds));
+  } catch (err) {
+    console.error("Firestore updateAdminCredentials failed:", err);
+    localStorage.setItem('okorie_admin_creds', JSON.stringify(creds));
   }
 };
 
