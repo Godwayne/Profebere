@@ -14,7 +14,8 @@ import {
 import { db } from '../firebase';
 import { 
   Publication, BlogPost, Project, GalleryImage, ContactMessage,
-  UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage, AdminSimCredentials
+  UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage, AdminSimCredentials,
+  LiveChatMessage, ChatConfig
 } from '../types';
 import { sendEmailNotification } from './mail';
 
@@ -1095,4 +1096,72 @@ export const saveCMSPage = async (slug: string, pageData: CMSPage): Promise<void
     const updated = [pageData, ...local.filter(p => p.slug !== slug)];
     localStorage.setItem('okorie_cms_pages', JSON.stringify(updated));
   }
+};
+
+// --- LIVE CHAT INTERFACE AND CONFIG ---
+export const fetchChatConfig = async (): Promise<ChatConfig> => {
+  try {
+    const docRef = doc(db, 'settings', 'chat_config');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as ChatConfig;
+    }
+  } catch (err) {
+    console.warn("Firestore fetchChatConfig failed, using default:", err);
+  }
+  
+  // Return default chat config
+  const localConfig = localStorage.getItem('okorie_chat_config');
+  if (localConfig) {
+    return JSON.parse(localConfig) as ChatConfig;
+  }
+  return {
+    welcomeMessage: 'Greetings! I am the automated Academic Assistant for Professor Ebere Okorie. How can I assist you with your scholarly inquiries today?',
+    suggestions: [
+      "Can you tell me about Prof. Okorie's research studies?",
+      "What articles or books has Prof. Ebere Okorie published?",
+      "How do I email or visit the Department at UNIUYO?",
+      "How can I donate or support his youth guidance programs?"
+    ],
+    assistantName: 'Academic Portal Assistant',
+    chatbotEnabled: true
+  };
+};
+
+export const saveChatConfig = async (config: ChatConfig): Promise<void> => {
+  try {
+    const docRef = doc(db, 'settings', 'chat_config');
+    await setDoc(docRef, config, { merge: true });
+  } catch (err) {
+    console.error("Firestore saveChatConfig failed:", err);
+  }
+  localStorage.setItem('okorie_chat_config', JSON.stringify(config));
+};
+
+export const logChatMessage = async (msg: Omit<LiveChatMessage, 'id'>): Promise<LiveChatMessage> => {
+  const newId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+  const completeMsg: LiveChatMessage = { id: newId, ...msg };
+  try {
+    const docRef = doc(db, 'chat_messages', newId);
+    await setDoc(docRef, completeMsg);
+  } catch (err) {
+    console.warn("Firestore logChatMessage failed, writing locally:", err);
+  }
+  
+  const local: LiveChatMessage[] = JSON.parse(localStorage.getItem('okorie_chat_messages') || '[]');
+  localStorage.setItem('okorie_chat_messages', JSON.stringify([completeMsg, ...local]));
+  return completeMsg;
+};
+
+export const fetchChatMessages = async (): Promise<LiveChatMessage[]> => {
+  try {
+    const q = query(collection(db, 'chat_messages'), orderBy('timestamp', 'desc'));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      return snapshot.docs.map(doc => doc.data() as LiveChatMessage);
+    }
+  } catch (err) {
+    console.warn("Firestore fetchChatMessages failed, using local:", err);
+  }
+  return JSON.parse(localStorage.getItem('okorie_chat_messages') || '[]');
 };

@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Sparkles, HelpCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
+import { fetchChatConfig, logChatMessage } from '../services/db';
+import { ChatConfig } from '../types';
 
 interface ChatMessage {
   id: string;
@@ -10,19 +12,66 @@ interface ChatMessage {
 
 export default function LiveChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: 'Greetings! I am the automated Academic Assistant for Professor Ebere Okorie. How can I assist you with your scholarly inquiries today?',
-      timestamp: new Date()
-    }
-  ]);
+  const [config, setConfig] = useState<ChatConfig>({
+    welcomeMessage: 'Greetings! I am the automated Academic Assistant for Professor Ebere Okorie. How can I assist you with your scholarly inquiries today?',
+    suggestions: [
+      "Can you tell me about Prof. Okorie's research studies?",
+      "What articles or books has Prof. Ebere Okorie published?",
+      "How do I email or visit the Department at UNIUYO?",
+      "How can I donate or support his youth guidance programs?"
+    ],
+    assistantName: 'Academic Portal Assistant',
+    chatbotEnabled: true
+  });
+  
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showNotification, setShowNotification] = useState(true);
+  const [sessionId, setSessionId] = useState('');
   
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Generate or read Session ID on mount and load chat config
+  useEffect(() => {
+    let sess = sessionStorage.getItem('okorie_chat_session_id');
+    if (!sess) {
+      sess = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+      sessionStorage.setItem('okorie_chat_session_id', sess);
+    }
+    setSessionId(sess);
+
+    const loadConfig = async () => {
+      try {
+        const liveConfig = await fetchChatConfig();
+        if (liveConfig) {
+          setConfig(liveConfig);
+          // Set welcome message dynamically
+          setMessages([
+            {
+              id: 'welcome',
+              role: 'assistant',
+              content: liveConfig.welcomeMessage || 'Greetings! I am the automated Academic Assistant for Professor Ebere Okorie. How can I assist you with your scholarly inquiries today?',
+              timestamp: new Date()
+            }
+          ]);
+        }
+      } catch (e) {
+        console.warn("Could not retrieve dynamic chat config:", e);
+        // Fallback default greeting
+        setMessages([
+          {
+            id: 'welcome',
+            role: 'assistant',
+            content: 'Greetings! I am the automated Academic Assistant for Professor Ebere Okorie. How can I assist you with your scholarly inquiries today?',
+            timestamp: new Date()
+          }
+        ]);
+      }
+    };
+
+    loadConfig();
+  }, []);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -40,17 +89,30 @@ export default function LiveChatWidget() {
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
 
-    // Create user message
+    const userMessageTime = new Date();
+    // Create user message locally
     const userMsg: ChatMessage = {
       id: 'user_' + Date.now(),
       role: 'user',
       content: text,
-      timestamp: new Date()
+      timestamp: userMessageTime
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setIsTyping(true);
+
+    // 1. Log User message to Firestore in the background
+    try {
+      await logChatMessage({
+        sessionId: sessionId || 'unknown_session',
+        role: 'user',
+        content: text,
+        timestamp: userMessageTime.toISOString()
+      });
+    } catch (err) {
+      console.warn("Failed background user message logging:", err);
+    }
 
     try {
       // Build conversation history for the server context
@@ -70,25 +132,53 @@ export default function LiveChatWidget() {
       }
 
       const data = await res.json();
+      const aiResponseText = data.reply || "I am currently processing academic records. Let me know if you would like me to describe Prof. Okorie's research directions, publications, or contacts.";
+      const assistantTime = new Date();
       
       const assistantMsg: ChatMessage = {
         id: 'assistant_' + Date.now(),
         role: 'assistant',
-        content: data.reply || "I am currently processing academic records. Let me know if you would like me to describe Prof. Okorie's research directions, publications, or contacts.",
-        timestamp: new Date()
+        content: aiResponseText,
+        timestamp: assistantTime
       };
 
       setMessages(prev => [...prev, assistantMsg]);
+
+      // 2. Log Assistant reply to Firestore
+      try {
+        await logChatMessage({
+          sessionId: sessionId || 'unknown_session',
+          role: 'assistant',
+          content: aiResponseText,
+          timestamp: assistantTime.toISOString()
+        });
+      } catch (err) {
+        console.warn("Failed background reply logging:", err);
+      }
+
     } catch (err) {
       console.error("LiveChat Sync Error:", err);
-      // Helpful fallback in case of absolute local connectivity issues
+      
+      const errorTime = new Date();
       const errMsg: ChatMessage = {
         id: 'error_' + Date.now(),
         role: 'assistant',
         content: "Connectivity alert. I will resolve the channel momentarily, but in the meantime, please feel free to navigate directly to the Publications page to view our academic output.",
-        timestamp: new Date()
+        timestamp: errorTime
       };
       setMessages(prev => [...prev, errMsg]);
+
+      // Log the error message or default reply
+      try {
+        await logChatMessage({
+          sessionId: sessionId || 'unknown_session',
+          role: 'assistant',
+          content: errMsg.content,
+          timestamp: errorTime.toISOString()
+        });
+      } catch (logErr) {
+        console.warn("Failed background error logging:", logErr);
+      }
     } finally {
       setIsTyping(false);
     }
@@ -99,12 +189,10 @@ export default function LiveChatWidget() {
     handleSendMessage(inputValue);
   };
 
-  const suggestionChips = [
-    { label: "Research Focus", query: "Can you tell me about Prof. Okorie's research studies?" },
-    { label: "Publications Catalog", query: "What articles or books has Prof. Ebere Okorie published?" },
-    { label: "Contact Details", query: "How do I email or visit the Department at UNIUYO?" },
-    { label: "Support Outreach", query: "How can I donate or support his youth guidance programs?" }
-  ];
+  // If chat is disabled globally by the Administrator, do not show the widget at all!
+  if (!config.chatbotEnabled) {
+    return null;
+  }
 
   return (
     <div id="live_chat_root" className="fixed bottom-6 right-6 z-50 font-sans">
@@ -152,7 +240,7 @@ export default function LiveChatWidget() {
       {isOpen && (
         <div 
           id="chat_panel_container"
-          className="bg-white border-2 border-navy w-[340px] sm:w-[380px] h-[520px] shadow-2xl flex flex-col justify-between animate-scale-up relative rounded-none"
+          className="bg-white border-2 border-navy w-[340px] sm:w-[380px] h-[520px] shadow-2xl flex flex-col justify-between animate-scale-up relative rounded-none animate-fade-in"
         >
           
           {/* Panel Header */}
@@ -167,7 +255,7 @@ export default function LiveChatWidget() {
               </div>
               <div>
                 <h3 className="font-serif font-bold text-xs uppercase tracking-wider text-white">
-                  Academic Portal Assistant
+                  {config.assistantName || 'Academic Portal Assistant'}
                 </h3>
                 <span className="text-[9px] text-gold font-mono tracking-widest uppercase flex items-center">
                   Online &bull; Interactive AI
@@ -229,18 +317,28 @@ export default function LiveChatWidget() {
           </div>
 
           {/* Quick Chip Actions */}
-          <div className="px-3 py-2 bg-slate-50 border-t border-navy/10 flex flex-wrap gap-1.5 text-[10px]">
-            {suggestionChips.map((chip, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSendMessage(chip.query)}
-                className="bg-white border border-navy/15 text-navy hover:text-gold hover:border-gold px-2 py-1 text-[9px] tracking-tight transition cursor-pointer"
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
+          {config.suggestions && config.suggestions.length > 0 && (
+            <div className="px-3 py-2 bg-slate-50 border-t border-navy/10 flex flex-wrap gap-1.5 text-[10px]">
+              {config.suggestions.map((suggestionText, idx) => {
+                if (!suggestionText.trim()) return null;
+                // Generate label safely
+                let label = suggestionText;
+                if (label.length > 22) {
+                  label = label.substr(0, 20) + "...";
+                }
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSendMessage(suggestionText)}
+                    className="bg-white border border-navy/15 text-navy hover:text-gold hover:border-gold px-2 py-1 text-[9px] tracking-tight transition cursor-pointer"
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Message form entry footer */}
           <form 

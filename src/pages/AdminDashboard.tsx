@@ -17,10 +17,11 @@ import {
   fetchDonationSettings, updateDonationSettings,
   fetchPaymentKeys, updatePaymentKeys,
   fetchCMSPage, saveCMSPage,
-  fetchAdminCredentials, updateAdminCredentials
+  fetchAdminCredentials, updateAdminCredentials,
+  fetchChatConfig, saveChatConfig, fetchChatMessages
 } from '../services/db';
 
-import { DonationSettings, PaymentKeys, CMSPage, CMSBlock, AdminSimCredentials } from '../types';
+import { DonationSettings, PaymentKeys, CMSPage, CMSBlock, AdminSimCredentials, LiveChatMessage, ChatConfig } from '../types';
 
 interface AdminDashboardProps {
   publications: Publication[];
@@ -72,6 +73,12 @@ export default function AdminDashboard({
   // Active Admin Tabs
   // 'analytics' | 'publications' | 'projects' | 'blog' | 'gallery' | 'messages' | 'transactions' | 'comments'
   const [activeTab, setActiveTab] = useState<string>('analytics');
+
+  // Live Chat Management State
+  const [chatConfig, setChatConfig] = useState<ChatConfig | null>(null);
+  const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [chatLoading, setChatLoading] = useState(false);
 
   // Modals Forms
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -135,8 +142,53 @@ export default function AdminDashboard({
       loadDonationSettings();
       loadPaymentKeys();
       loadCmsPage(selectedCmsSlug);
+      loadChatConfigAndMessages();
     }
   }, [isLoggedIn, selectedCmsSlug]);
+
+  const loadChatConfigAndMessages = async () => {
+    setChatLoading(true);
+    try {
+      const configData = await fetchChatConfig();
+      setChatConfig(configData);
+      
+      const messagesData = await fetchChatMessages();
+      setChatMessages(messagesData);
+      
+      if (messagesData.length > 0 && !selectedSessionId) {
+        // Group by sessionId and sort sessions by the latest message timestamp
+        const sessionLatestMsgMap = new Map<string, string>();
+        messagesData.forEach(m => {
+          const existing = sessionLatestMsgMap.get(m.sessionId);
+          if (!existing || m.timestamp > existing) {
+            sessionLatestMsgMap.set(m.sessionId, m.timestamp);
+          }
+        });
+        const sortedSessions = Array.from(sessionLatestMsgMap.entries())
+          .sort((a, b) => b[1].localeCompare(a[1]));
+        if (sortedSessions.length > 0) {
+          setSelectedSessionId(sortedSessions[0][0]);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading Chat configuration or logs:", err);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleSaveChatConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatConfig) return;
+    setChatLoading(false); // don't set global block loading, just run
+    try {
+      await saveChatConfig(chatConfig);
+      setSaveSuccessMessage("Live Chat Portal settings saved securely!");
+      setTimeout(() => setSaveSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const loadDonationSettings = async () => {
     try {
@@ -605,6 +657,7 @@ export default function AdminDashboard({
               { id: 'paymentGateway', label: 'Payment Gateway', icon: ShieldCheck },
               { id: 'adminCredentials', label: 'Admin Security', icon: Key },
               { id: 'pageCMS', label: 'CMS Page Builder', icon: Sparkles },
+              { id: 'liveChat', label: 'Live Chat Center', icon: MessageSquare, count: Array.from(new Set(chatMessages.map(m => m.sessionId))).length },
             ].map(navItem => (
               <button
                 key={navItem.id}
@@ -1561,6 +1614,62 @@ export default function AdminDashboard({
                   </div>
                 )}
                 
+                {/* Homepage Hero Banner text elements customization */}
+                {selectedCmsSlug === 'home' && (
+                  <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4 text-left">
+                    <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
+                      <Sparkles className="h-4 w-4 text-amber-550 shrink-0" />
+                      <span>Homepage Hero Text Customization</span>
+                    </h4>
+                    
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Institution Tag</label>
+                        <input 
+                          type="text"
+                          value={cmsPage.heroInstitution || ''}
+                          onChange={e => setCmsPage({ ...cmsPage, heroInstitution: e.target.value })}
+                          placeholder="University of Uyo, Nigeria"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Title / Name Heading</label>
+                        <input 
+                          type="text"
+                          value={cmsPage.heroTitle || ''}
+                          onChange={e => setCmsPage({ ...cmsPage, heroTitle: e.target.value })}
+                          placeholder="Prof. Ebere Okorie"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Academic Subheading (e.g. Professor of Sociology)</label>
+                      <input 
+                        type="text"
+                        value={cmsPage.heroSubheading || ''}
+                        onChange={e => setCmsPage({ ...cmsPage, heroSubheading: e.target.value })}
+                        placeholder="Professor of Sociology and Anthropology"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Brief Biography Summary</label>
+                      <textarea 
+                        rows={3}
+                        value={cmsPage.heroDescription || ''}
+                        onChange={e => setCmsPage({ ...cmsPage, heroDescription: e.target.value })}
+                        placeholder="Brief summary paragraph describing his research domains and department..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-gold font-sans"
+                      />
+                    </div>
+                  </div>
+                )}
+                
                 {/* Meta Tags Configuration */}
                 <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4">
                   <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
@@ -1714,6 +1823,246 @@ export default function AdminDashboard({
 
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB: LIVE CHAT CENTER */}
+        {activeTab === 'liveChat' && (
+          <div className="space-y-6 animate-fade-in text-left font-sans">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-slate-250 pb-3 gap-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">Live Chat Center & Configuration</h3>
+                <p className="text-xs text-slate-500">Monitor active visitor conversations, inspect Gemini-buffered logs, and customize assistant parameters.</p>
+              </div>
+              <button 
+                type="button"
+                onClick={loadChatConfigAndMessages}
+                className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-950 font-bold px-3 py-1.5 text-xs font-mono flex items-center space-x-1.5 rounded-lg border border-slate-200"
+              >
+                <span>Synchronize Conversation Logs</span>
+              </button>
+            </div>
+
+            {saveSuccessMessage && (
+              <div className="p-3 bg-emerald-55 text-emerald-800 border border-emerald-200 text-xs font-mono flex items-center space-x-2 rounded-lg bg-emerald-50">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span>{saveSuccessMessage}</span>
+              </div>
+            )}
+
+            {/* PART 1: CHATBOT CONFIG SHEET */}
+            {chatConfig && (
+              <form onSubmit={handleSaveChatConfig} className="bg-slate-50 border border-slate-150 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h4 className="font-serif font-bold text-slate-900 text-sm flex items-center space-x-2">
+                    <Sparkles className="h-4.5 w-4.5 text-amber-550 mr-1 shrink-0 animate-pulse" />
+                    <span>Live Assistant Configuration</span>
+                  </h4>
+                  <div className="flex items-center space-x-2">
+                    <input 
+                      type="checkbox"
+                      id="chatbot_toggle"
+                      checked={chatConfig.chatbotEnabled}
+                      onChange={e => setChatConfig({ ...chatConfig, chatbotEnabled: e.target.checked })}
+                      className="h-4 w-4 text-amber-600 border-slate-350 rounded focus:ring-amber-500 cursor-pointer"
+                    />
+                    <label htmlFor="chatbot_toggle" className="text-xs font-bold text-slate-700 font-mono cursor-pointer select-none">
+                      {chatConfig.chatbotEnabled ? "WIDGET ONLINE" : "WIDGET DISCONNECTED"}
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Assistant Display Title / Role</label>
+                    <input 
+                      type="text"
+                      required
+                      value={chatConfig.assistantName}
+                      onChange={e => setChatConfig({ ...chatConfig, assistantName: e.target.value })}
+                      placeholder="Scholarly Portal Assistant"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-sans focus:outline-none focus:border-amber-500 font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Automated Initial Greeting</label>
+                    <input 
+                      type="text"
+                      required
+                      value={chatConfig.welcomeMessage}
+                      onChange={e => setChatConfig({ ...chatConfig, welcomeMessage: e.target.value })}
+                      placeholder="Welcome greeting..."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-sans focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Suggestion Action Chips (Editable Quick Inquiries)</label>
+                  <div className="grid sm:grid-cols-2 gap-2.5">
+                    {chatConfig.suggestions?.map((sug, idx) => (
+                      <div key={idx} className="flex items-center space-x-1.5">
+                        <span className="text-[11px] font-mono text-slate-400 font-bold">#{idx + 1}</span>
+                        <input 
+                          type="text"
+                          value={sug}
+                          onChange={e => {
+                            const updated = [...(chatConfig.suggestions || [])];
+                            updated[idx] = e.target.value;
+                            setChatConfig({ ...chatConfig, suggestions: updated });
+                          }}
+                          placeholder={`Quick question chip #${idx + 1}`}
+                          className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    className="cursor-pointer bg-slate-900 hover:bg-slate-950 text-gold px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-lg border border-gold/10"
+                  >
+                    Save Config Settings
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* PART 2: DUAL-COLUMN LIVE MESSAGES MONITOR BOX */}
+            <div className="grid md:grid-cols-12 gap-6 items-stretch">
+              
+              {/* Columns A: Sessions Sidebar (5 cols) */}
+              <div className="md:col-span-4 border border-slate-200 rounded-2xl overflow-hidden flex flex-col bg-slate-50 h-[480px]">
+                <div className="bg-slate-100 border-b border-slate-200 px-4 py-3">
+                  <h5 className="text-[10px] uppercase font-mono tracking-widest font-bold text-slate-500 text-left">Active Visitor Lanes</h5>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-150">
+                  {(() => {
+                    // Group messages by session
+                    const sessionsMap = new Map<string, LiveChatMessage[]>();
+                    chatMessages.forEach(msg => {
+                      if (!sessionsMap.has(msg.sessionId)) {
+                        sessionsMap.set(msg.sessionId, []);
+                      }
+                      sessionsMap.get(msg.sessionId)!.push(msg);
+                    });
+
+                    // Sort sessions by the latest message timestamp
+                    const sortedSessions = Array.from(sessionsMap.entries()).sort((a, b) => {
+                      const latestA = [...a[1]].sort((x, y) => y.timestamp.localeCompare(x.timestamp))[0]?.timestamp || '';
+                      const latestB = [...b[1]].sort((x, y) => y.timestamp.localeCompare(x.timestamp))[0]?.timestamp || '';
+                      return latestB.localeCompare(latestA);
+                    });
+
+                    if (sortedSessions.length === 0) {
+                      return (
+                        <div className="py-12 px-4 text-center text-slate-400 text-xs">
+                          <MessageSquare className="h-6 w-6 mx-auto mb-1.5 opacity-40 text-slate-400" />
+                          <span>No buffer conversations logged yet. Open the chatbot to initiate first contact.</span>
+                        </div>
+                      );
+                    }
+
+                    return sortedSessions.map(([sessId, msgs]) => {
+                      const sortedMsgs = [...msgs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+                      const lastMsg = sortedMsgs[0];
+                      const userMsgCount = msgs.filter(m => m.role === 'user').length;
+                      const isActive = selectedSessionId === sessId;
+
+                      return (
+                        <button
+                          key={sessId}
+                          type="button"
+                          onClick={() => setSelectedSessionId(sessId)}
+                          className={`w-full p-4 text-left transition-colors flex flex-col space-y-1 focus:outline-none cursor-pointer border-l-4 ${
+                            isActive 
+                              ? 'bg-amber-100/50 border-amber-500' 
+                              : 'bg-white border-transparent hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-[10px] font-bold text-slate-700">LANE #{sessId.substr(5, 5).toUpperCase()}</span>
+                            <span className="text-[8px] text-slate-400 font-mono uppercase">
+                              {new Date(lastMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-800 font-medium truncate w-full">{lastMsg.content}</p>
+                          <div className="flex items-center justify-between text-[9px] text-slate-400">
+                            <span>{msgs.length} messages logged</span>
+                            {userMsgCount > 0 && (
+                              <span className="bg-slate-150 text-slate-600 px-1.5 py-0.5 rounded font-mono font-semibold">User: {userMsgCount}</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Columns B: Selected Session Timeline Box (8 cols) */}
+              <div className="md:col-span-8 border border-slate-200 rounded-2xl overflow-hidden flex flex-col bg-white h-[480px]">
+                {selectedSessionId ? (
+                  (() => {
+                    const activeSessionMessages = chatMessages
+                      .filter(m => m.sessionId === selectedSessionId)
+                      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+                    return (
+                      <>
+                        <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex justify-between items-center text-xs">
+                          <span className="font-mono text-[10px] text-slate-500 font-bold flex items-center">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 mr-2"></span>
+                            ACTIVE SESSION: {selectedSessionId.toUpperCase()}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-405 uppercase text-slate-400">
+                            Total buffered logs: {activeSessionMessages.length}
+                          </span>
+                        </div>
+
+                        {/* Message log window */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[#fcfbfa]/60">
+                          {activeSessionMessages.map((msg) => (
+                            <div 
+                              key={msg.id}
+                              className={`flex flex-col max-w-[85%] ${
+                                msg.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-1 mb-0.5 text-[9px] text-slate-400 font-mono uppercase">
+                                <span>{msg.role === 'user' ? 'Anonymous Visitor' : (chatConfig?.assistantName || 'Academic Assistant')}</span>
+                              </div>
+                              <div 
+                                className={`p-3 rounded-xl leading-relaxed text-left text-xs ${
+                                  msg.role === 'user' 
+                                    ? 'bg-slate-900 text-white rounded-tr-none' 
+                                    : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-2xs'
+                                }`}
+                              >
+                                <p className="whitespace-pre-line font-medium">{msg.content}</p>
+                              </div>
+                              <span className="text-[8px] text-slate-400 font-mono mt-0.5 uppercase">
+                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-slate-400">
+                    <MessageSquare className="h-10 w-10 mb-2 opacity-30 animate-bounce" />
+                    <span className="text-xs font-mono uppercase tracking-wider text-slate-500 font-bold">No active conversation lane selected</span>
+                  </div>
+                )}
+              </div>
+
+            </div>
           </div>
         )}
 

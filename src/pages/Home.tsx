@@ -80,23 +80,42 @@ export default function Home({ onNavigate, latestBlogPosts, recentPublications }
           <div className="md:col-span-7 space-y-6 text-left">
             <div className="inline-flex items-center space-x-2 bg-gold/10 border border-gold/30 px-3 py-1 text-[10px] uppercase font-mono tracking-widest text-gold font-bold">
               <GraduationCap className="h-4.5 w-4.5 text-gold" />
-              <span>University of Uyo, Nigeria</span>
+              <span>{cmsPage?.heroInstitution || "University of Uyo, Nigeria"}</span>
             </div>
             
             <div className="relative">
               <div className="absolute -top-3 -left-4 w-12 h-12 border-t-2 border-l-2 border-gold opacity-60"></div>
               <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight uppercase pt-2">
-                Prof. Ebere <br/>
-                <span className="text-gold italic font-light">Okorie</span>
+                {cmsPage?.heroTitle ? (
+                  (() => {
+                    const words = cmsPage.heroTitle.trim().split(/\s+/);
+                    if (words.length > 1) {
+                      const lastWord = words[words.length - 1];
+                      const restWords = words.slice(0, words.length - 1).join(" ");
+                      return (
+                        <>
+                          {restWords} <br />
+                          <span className="text-gold italic font-light">{lastWord}</span>
+                        </>
+                      );
+                    }
+                    return cmsPage.heroTitle;
+                  })()
+                ) : (
+                  <>
+                    Prof. Ebere <br/>
+                    <span className="text-gold italic font-light">Okorie</span>
+                  </>
+                )}
               </h1>
             </div>
             
             <p className="text-lg sm:text-xl text-[#fdfcf9]/90 font-serif italic max-w-xl pl-4 border-l-2 border-gold">
-              Professor of Sociology and Anthropology
+              {cmsPage?.heroSubheading || "Professor of Sociology and Anthropology"}
             </p>
             
             <p className="text-sm text-[#fdfcf9]/80 max-w-xl leading-relaxed font-light">
-              Professor Ebere James Okorie is a distinguished Professor of Criminology at the Department of Sociology and Anthropology, University of Uyo (UNIUYO), Nigeria. His research spans security studies, juvenile delinquency, and deviant behavior, and he has notably supervised numerous doctoral candidates in his field.
+              {cmsPage?.heroDescription || "Professor Ebere James Okorie is a distinguished Professor of Criminology at the Department of Sociology and Anthropology, University of Uyo (UNIUYO), Nigeria. His research spans security studies, juvenile delinquency, and deviant behavior, and he has notably supervised numerous doctoral candidates in his field."}
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 pt-4">

@@ -128,6 +128,10 @@ export interface CMSPage {
   title: string;
   blocks: CMSBlock[];
   profileImage?: string;
+  heroInstitution?: string;
+  heroTitle?: string;
+  heroSubheading?: string;
+  heroDescription?: string;
   metaTags?: {
     description?: string;
     keywords?: string;
@@ -137,6 +141,21 @@ export interface CMSPage {
 export interface AdminSimCredentials {
   email: string;
   passwordHash: string;
+}
+
+export interface LiveChatMessage {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface ChatConfig {
+  welcomeMessage: string;
+  suggestions: string[];
+  assistantName: string;
+  chatbotEnabled: boolean;
 }
 
 
