@@ -1073,13 +1073,37 @@ export const fetchCMSPage = async (slug: string): Promise<CMSPage | null> => {
     const docRef = doc(db, 'pages', slug);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data() as CMSPage;
+      const page = docSnap.data() as CMSPage;
+      if (page && page.profileImage) {
+        if (
+          page.profileImage.includes('assets/images') || 
+          page.profileImage.includes('prof_ebere') || 
+          page.profileImage.includes('faculty_prof') ||
+          page.profileImage.includes('178198522') ||
+          page.profileImage.includes('178198544')
+        ) {
+          page.profileImage = "https://i.imgur.com/uYvEwbo.jpeg";
+        }
+      }
+      return page;
     }
     return null;
   } catch (err) {
     console.warn("Firestore fetchCMSPage failed, falling back to local:", err);
     const local: CMSPage[] = JSON.parse(localStorage.getItem('okorie_cms_pages') || '[]');
-    return local.find(p => p.slug === slug) || null;
+    const page = local.find(p => p.slug === slug) || null;
+    if (page && page.profileImage) {
+      if (
+        page.profileImage.includes('assets/images') || 
+        page.profileImage.includes('prof_ebere') || 
+        page.profileImage.includes('faculty_prof') ||
+        page.profileImage.includes('178198522') ||
+        page.profileImage.includes('178198544')
+      ) {
+        page.profileImage = "https://i.imgur.com/uYvEwbo.jpeg";
+      }
+    }
+    return page;
   }
 };
 
