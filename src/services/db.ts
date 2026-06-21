@@ -16,6 +16,7 @@ import {
   Publication, BlogPost, Project, GalleryImage, ContactMessage,
   UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage, AdminSimCredentials
 } from '../types';
+import { sendEmailNotification } from './mail';
 
 // ==========================================
 // DEFAULT / SEED DATA
@@ -702,6 +703,73 @@ export const updateTransactionStatus = async (id: string, status: 'success' | 'f
     const localTxns: Transaction[] = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');
     const updated = localTxns.map(t => t.id === id ? { ...t, status } : t);
     localStorage.setItem('okorie_transactions', JSON.stringify(updated));
+
+    // Automated Transaction Emails upon successful completion
+    if (status === 'success') {
+      try {
+        let txnData: Transaction | null = null;
+        if (!id.startsWith('local_')) {
+          const docRef = doc(db, 'transactions', id);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            txnData = { id: snap.id, ...snap.data() } as Transaction;
+          }
+        }
+        
+        // If not loaded from firestore, check local transactions list
+        if (!txnData) {
+          const match = localTxns.find(t => t.id === id);
+          if (match) txnData = match;
+        }
+
+        if (txnData) {
+          const { userEmail, userName, type, amount, reference, publicationTitle } = txnData;
+          if (type === 'purchase') {
+            await sendEmailNotification({
+              to: userEmail,
+              type: 'purchase',
+              metadata: {
+                name: userName,
+                itemName: publicationTitle,
+                amount,
+                reference
+              }
+            });
+
+            // Notify administrative email config
+            await sendEmailNotification({
+              type: 'admin_alert',
+              metadata: {
+                alertTitle: 'Publication Book Purchased',
+                alertBody: `User "${userName}" (${userEmail}) completed a purchase of "${publicationTitle}" for ₦${amount.toLocaleString()}. Receipt Reference: ${reference}`
+              }
+            });
+
+          } else if (type === 'donation') {
+            await sendEmailNotification({
+              to: userEmail,
+              type: 'donation',
+              metadata: {
+                name: userName,
+                amount,
+                reference
+              }
+            });
+
+            // Notify administrative email config
+            await sendEmailNotification({
+              type: 'admin_alert',
+              metadata: {
+                alertTitle: 'New Research Donation Received',
+                alertBody: `User "${userName}" (${userEmail}) completed a donation of ₦${amount.toLocaleString()} in support of criminological outreach. Reference: ${reference}`
+              }
+            });
+          }
+        }
+      } catch (mailErr) {
+        console.warn("Mail dispatch skipped/failed on successful payment update:", mailErr);
+      }
+    }
   } catch (error) {
     console.warn("Firestore updateTransactionStatus failed:", error);
     const localTxns: Transaction[] = JSON.parse(localStorage.getItem('okorie_transactions') || '[]');

@@ -508,35 +508,6 @@ export default function AdminDashboard({
     return (
       <div className="max-w-md mx-auto py-12 px-6 text-left animate-fade-in space-y-8 select-none">
         
-        {/* Collapsible Sandbox Advisor */}
-        <div id="credential_advisor" className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2">
-          <button 
-            type="button"
-            onClick={() => setShowCreds(!showCreds)}
-            className="flex items-center justify-between w-full cursor-pointer text-xs font-bold font-mono text-slate-600 uppercase tracking-wider focus:outline-none"
-          >
-            <span className="flex items-center gap-1.5 text-slate-700">
-              <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
-              Sandbox Testing Credentials
-            </span>
-            <span className="text-[10px] bg-slate-250 hover:bg-slate-300 px-2 py-0.5 border border-slate-300 rounded font-sans uppercase transition-colors">
-              {showCreds ? "Hide" : "Show"}
-            </span>
-          </button>
-          
-          {showCreds && (
-            <div className="space-y-1.5 pt-2 border-t border-slate-200/60 animate-fade-in text-left">
-              <span className="text-[11px] text-slate-500 block leading-normal">
-                These simulation credentials allow scholars to inspect and manage dynamic portal features securely:
-              </span>
-              <div className="text-xs font-mono text-slate-700 bg-white p-2.5 rounded border border-slate-150 mt-1.5 select-all space-y-1">
-                <div>Email: <strong className="text-amber-850">{adminCreds.email}</strong></div>
-                <div>Password: <strong className="text-amber-850">{adminCreds.passwordHash}</strong></div>
-              </div>
-            </div>
-          )}
-        </div>
-
         <div className="bg-white border border-slate-150 rounded-3xl p-8 shadow-md space-y-6">
           <div className="text-center space-y-2">
             <div className="inline-flex p-3 bg-amber-50 text-amber-600 rounded-2xl">
@@ -562,7 +533,7 @@ export default function AdminDashboard({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@okorie.edu.ng"
+                  placeholder="Enter administrator email"
                   className="w-full pl-3 pr-4 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:border-amber-500 bg-white"
                 />
               </div>
@@ -577,7 +548,7 @@ export default function AdminDashboard({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password123"
+                  placeholder="Enter secure password"
                   className="w-full pl-3 pr-4 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:border-amber-500 bg-white"
                 />
               </div>

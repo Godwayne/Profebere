@@ -12,6 +12,7 @@ import {
 import { auth } from '../firebase';
 import { UserProfile } from '../types';
 import { fetchUserProfile, createUserProfile, updateUserProfile } from '../services/db';
+import { sendEmailNotification } from '../services/mail';
 
 interface AuthContextType {
   user: User | null;
@@ -100,6 +101,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Seed user profile
       const prof = await createUserProfile(userCredential.user.uid, email, name, false);
       setProfile(prof);
+
+      // Automated registration emails
+      try {
+        await sendEmailNotification({
+          to: email,
+          type: 'welcome',
+          metadata: { name }
+        });
+
+        await sendEmailNotification({
+          type: 'admin_alert',
+          metadata: {
+            alertTitle: 'New User Registration',
+            alertBody: `A new user named "${name}" (${email}) has registered on the official academic portal.`
+          }
+        });
+      } catch (mailErr) {
+        console.warn("Automated registration emails failure:", mailErr);
+      }
     } finally {
       setLoading(false);
     }

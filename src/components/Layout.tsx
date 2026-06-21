@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Menu, X, GraduationCap, MapPin, Mail, ChevronRight, BookOpen, 
-  Linkedin, Twitter, Globe, Lock, ShieldCheck, User as UserIcon, Heart
+  Linkedin, Twitter, Globe, Lock, ShieldCheck, User as UserIcon, Heart,
+  Search, Sparkles
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { fetchPublications, fetchProjects, fetchBlogPosts } from '../services/db';
 
 interface LayoutProps {
   currentPage: string;
@@ -14,6 +16,55 @@ interface LayoutProps {
 export default function Layout({ currentPage, onNavigate, children }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, profile } = useAuth();
+
+  // Integrated Global Academic Search Engine State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [publications, setPublications] = useState<any[]>([]);
+  const [blogPosts, setBlogPosts] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [searchActive, setSearchActive] = useState(false);
+  const [dbLoaded, setDbLoaded] = useState(false);
+
+  const handleSearchFocus = async () => {
+    setSearchActive(true);
+    if (!dbLoaded) {
+      setIsSearching(true);
+      try {
+        const [pubs, projs, blogs] = await Promise.all([
+          fetchPublications(),
+          fetchProjects(),
+          fetchBlogPosts()
+        ]);
+        setPublications(pubs);
+        setProjects(projs);
+        setBlogPosts(blogs);
+        setDbLoaded(true);
+      } catch (err) {
+        console.error("Failed loading search database catalogs", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }
+  };
+
+  const filteredPublications = searchQuery.trim() === '' ? [] : publications.filter(p => 
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (p.journal && p.journal.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (p.summary && p.summary.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const filteredBlogPosts = searchQuery.trim() === '' ? [] : blogPosts.filter(b => 
+    b.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    b.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredProjects = searchQuery.trim() === '' ? [] : projects.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const totalResults = filteredPublications.length + filteredBlogPosts.length + filteredProjects.length;
 
   const navigationItems = [
     { id: 'home', label: 'Home' },
@@ -56,20 +107,43 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
       </div>
 
       {/* Main Professional Academic Header */}
-      <header className="sticky top-0 bg-[#fdfcf9]/95 backdrop-blur-md border-b border-navy/10 z-40 header-glass">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <header className="sticky top-0 bg-[#fdfcf9]/95 backdrop-blur-md border-b border-navy/10 z-40 header-glass relative">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center gap-4">
           
           {/* Logo Brand Brand */}
           <div 
             onClick={() => { onNavigate('home'); setMobileMenuOpen(false); }}
-            className="flex items-center space-x-3 cursor-pointer text-left select-none group"
+            className="flex items-center space-x-3 cursor-pointer text-left select-none group shrink-0"
           >
             <div className="w-10 h-10 bg-navy flex items-center justify-center text-gold font-serif text-lg font-bold italic transition-all group-hover:bg-navy-hover">
               EO
             </div>
-            <div>
+            <div className="hidden sm:block">
               <span className="font-serif font-bold text-lg sm:text-xl text-navy tracking-tight block uppercase">Prof. Ebere Okorie</span>
               <span className="text-[9px] uppercase font-mono tracking-[0.2em] text-gold font-bold block">Sociology & anthropology &bull; UniUyo</span>
+            </div>
+          </div>
+
+          {/* Desktop Search Bar */}
+          <div className="hidden md:block relative w-64 xl:w-72">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={handleSearchFocus}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search resources, books, news..."
+                className="w-full pl-9 pr-8 py-2 bg-[#fdfcf9] border border-navy/15 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-gold rounded-full transition-all focus:ring-1 focus:ring-gold/20"
+              />
+              <Search className="absolute left-3.5 top-2.5 w-3.5 h-3.5 text-navy/40" />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3.5 top-2.5 text-[10px] text-navy/40 hover:text-gold cursor-pointer font-bold"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
@@ -103,23 +177,155 @@ export default function Layout({ currentPage, onNavigate, children }: LayoutProp
           </button>
         </div>
 
+        {/* Floating Academic Index Results Overlays Panel */}
+        {searchActive && (
+          <div className="absolute top-full left-0 right-0 max-w-xl mx-auto bg-white border border-slate-200/80 shadow-2xl rounded-2xl z-50 p-5 mt-2 max-h-[420px] overflow-y-auto animate-fade-in text-left">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <span className="text-[10px] font-bold uppercase font-mono tracking-widest text-[#b49e62] flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 animate-pulse text-[#b49e62]" />
+                Digital Portal Finder
+              </span>
+              <button
+                type="button"
+                onClick={() => { setSearchActive(false); setSearchQuery(''); }}
+                className="text-[10px] uppercase font-mono px-2 py-1 bg-slate-100 hover:bg-slate-250 text-slate-500 rounded transition cursor-pointer"
+              >
+                Close Search
+              </button>
+            </div>
+
+            {isSearching ? (
+              <div className="py-12 text-center space-y-2">
+                <div className="inline-block h-5 w-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                <p className="font-serif italic text-xs text-slate-400">Querying scholarly library indices...</p>
+              </div>
+            ) : searchQuery.trim() === '' ? (
+              <div className="py-10 text-center text-slate-400 space-y-1">
+                <p className="font-serif text-sm italic">Type keywords to search published works...</p>
+                <p className="text-[9px] uppercase font-mono tracking-[0.1em] text-[#a0aec0]">publications • books • research projects • blogs • news</p>
+              </div>
+            ) : totalResults === 0 ? (
+              <div className="py-10 text-center text-slate-400">
+                <p className="font-serif text-sm italic">No records match "{searchQuery}"</p>
+                <p className="text-[9px] uppercase font-mono tracking-wider pt-1.5 text-slate-400">Try other professional terms (e.g. "sociology", "transitions", "justice")</p>
+              </div>
+            ) : (
+              <div className="pt-3 space-y-4">
+                <p className="text-[10px] text-slate-400 font-mono tracking-wider pb-1">{totalResults} matches mapped under "{searchQuery}"</p>
+                
+                {/* Results: Publications */}
+                {filteredPublications.length > 0 && (
+                  <div className="space-y-1.5 text-left">
+                    <span className="text-[8px] font-bold uppercase font-mono tracking-wider text-[#b49e62] bg-amber-500/5 px-2 py-0.5 rounded">Publications & Books</span>
+                    <div className="grid gap-1.5">
+                      {filteredPublications.map(pub => (
+                        <div 
+                          key={pub.id}
+                          onClick={() => {
+                            onNavigate('publications');
+                            setSearchActive(false);
+                            setSearchQuery('');
+                          }}
+                          className="p-2.5 bg-slate-50 hover:bg-amber-500/5 border border-slate-150 rounded-lg cursor-pointer transition text-left"
+                        >
+                          <h4 className="font-serif text-xs font-bold text-navy truncate">{pub.title}</h4>
+                          <p className="text-[10px] text-slate-500 line-clamp-1 italic">{pub.journal} &bull; {pub.year}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Results: Research Projects */}
+                {filteredProjects.length > 0 && (
+                  <div className="space-y-1.5 text-left pt-1">
+                    <span className="text-[8px] font-bold uppercase font-mono tracking-wider text-emerald-850 bg-emerald-55 px-2 py-0.5 rounded">Research & Projects</span>
+                    <div className="grid gap-1.5">
+                      {filteredProjects.map(proj => (
+                        <div 
+                          key={proj.id}
+                          onClick={() => {
+                            onNavigate('research');
+                            setSearchActive(false);
+                            setSearchQuery('');
+                          }}
+                          className="p-2.5 bg-slate-50 hover:bg-emerald-500/5 border border-slate-150 rounded-lg cursor-pointer transition text-left"
+                        >
+                          <h4 className="font-serif text-xs font-bold text-navy truncate">{proj.name}</h4>
+                          <p className="text-[10px] text-slate-500 line-clamp-1">{proj.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Results: Blog Posts */}
+                {filteredBlogPosts.length > 0 && (
+                  <div className="space-y-1.5 text-left pt-1">
+                    <span className="text-[8px] font-bold uppercase font-mono tracking-wider text-indigo-850 bg-indigo-55 px-2 py-0.5 rounded">News & Blog Articles</span>
+                    <div className="grid gap-1.5">
+                      {filteredBlogPosts.map(post => (
+                        <div 
+                          key={post.id}
+                          onClick={() => {
+                            onNavigate('blog');
+                            setSearchActive(false);
+                            setSearchQuery('');
+                          }}
+                          className="p-2.5 bg-slate-50 hover:bg-indigo-500/5 border border-slate-150 rounded-lg cursor-pointer transition text-left"
+                        >
+                          <h4 className="font-serif text-xs font-bold text-navy truncate">{post.title}</h4>
+                          <p className="text-[10px] text-slate-500 line-clamp-1">{post.excerpt || post.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Mobile Navigation Dropdown panel */}
         {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-navy/10 bg-[#fdfcf9]/98 backdrop-blur-md p-4 space-y-2 animate-slide-down shadow-lg text-left">
-            {navigationItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => { onNavigate(item.id); setMobileMenuOpen(false); }}
-                className={`w-full flex items-center space-x-3 px-4 py-3 text-xs uppercase tracking-wider transition-colors cursor-pointer ${
-                  currentPage === item.id 
-                    ? 'bg-navy text-gold font-bold' 
-                    : 'text-navy/80 hover:bg-navy/[0.04]'
-                }`}
-              >
-                {item.icon && <item.icon className="h-4 w-4 shrink-0 text-gold" />}
-                <span>{item.label}</span>
-              </button>
-            ))}
+          <div className="lg:hidden border-t border-navy/10 bg-[#fdfcf9]/98 backdrop-blur-md p-4 space-y-3.5 animate-slide-down shadow-lg text-left">
+            {/* Mobile Integrated Search Input */}
+            <div className="relative w-full">
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={handleSearchFocus}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search literature library..."
+                className="w-full pl-9 pr-8 py-2 bg-white border border-navy/15 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-gold rounded-full"
+              />
+              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-navy/40" />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-2.5 text-[10px] text-navy/40 hover:text-gold cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {navigationItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => { onNavigate(item.id); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 text-xs uppercase tracking-wider transition-colors cursor-pointer ${
+                    currentPage === item.id 
+                      ? 'bg-navy text-gold font-bold' 
+                      : 'text-navy/80 hover:bg-navy/[0.04]'
+                  }`}
+                >
+                  {item.icon && <item.icon className="h-4 w-4 shrink-0 text-gold" />}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </header>
