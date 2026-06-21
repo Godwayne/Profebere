@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Download, GraduationCap, Briefcase, Award, BookOpen, Sparkles } from 'lucide-react';
 import { fetchCMSPage } from '../services/db';
 import { CMSPage } from '../types';
-import profProfileImg from '../assets/images/faculty_prof_ebere_1781985440905.jpg';
+import profProfileImg from '../assets/images/prof_ebere_okorie_1781985221638.jpg';
 
 interface AboutProps {
   onNavigate: (page: string) => void;
@@ -73,7 +73,7 @@ export default function About({ onNavigate }: AboutProps) {
             <div className="relative inline-block mb-4 mt-2">
               <div className="absolute -inset-2 border border-gold/30 rounded-none transform rotate-3" />
               <img 
-                src={profProfileImg} 
+                src={cmsPage?.profileImage || profProfileImg} 
                 alt="Prof. Ebere Okorie" 
                 referrerPolicy="no-referrer"
                 className="relative object-cover w-36 h-36 mx-auto border border-navy/10 filter brightness-95 transition-all duration-300 pointer-events-none"

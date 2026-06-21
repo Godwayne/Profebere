@@ -1476,6 +1476,91 @@ export default function AdminDashboard({
             ) : (
               <div className="space-y-6">
                 
+                {/* Profile Header Image Customization */}
+                {(selectedCmsSlug === 'home' || selectedCmsSlug === 'about') && (
+                  <div className="border border-amber-200 bg-amber-50/15 p-4 rounded-xl space-y-4">
+                    <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-amber-100 pb-1.5 flex items-center space-x-1.5">
+                      <Sparkles className="h-4 w-4 text-amber-600 animate-pulse" />
+                      <span>{selectedCmsSlug === 'home' ? 'Homepage Profile Photo Customization' : 'Biography Page Profile Photo Customization'}</span>
+                    </h4>
+                    
+                    <div className="grid sm:grid-cols-3 gap-4 items-center">
+                      {/* Left: Preview */}
+                      <div className="flex flex-col items-center justify-center border border-slate-200 p-2 bg-white rounded-lg">
+                        <span className="text-[8px] font-bold uppercase text-slate-400 font-mono mb-1">Image Preview</span>
+                        {cmsPage.profileImage ? (
+                          <img 
+                            src={cmsPage.profileImage} 
+                            alt="Custom Profile" 
+                            className="w-24 h-28 object-cover rounded shadow-md border border-amber-300"
+                          />
+                        ) : (
+                          <div className="w-24 h-28 bg-slate-100 border border-dashed border-slate-300 rounded flex flex-col items-center justify-center text-center p-1">
+                            <span className="text-[9px] text-slate-400 font-mono">Running Default Photo</span>
+                          </div>
+                        )}
+                        {cmsPage.profileImage && (
+                          <button
+                            type="button"
+                            onClick={() => setCmsPage({ ...cmsPage, profileImage: undefined })}
+                            className="mt-2 text-[9px] font-mono uppercase bg-rose-50 text-rose-600 hover:bg-rose-100 px-2 py-0.5 rounded cursor-pointer border border-rose-200"
+                          >
+                            Reset Default
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Right: Upload controls */}
+                      <div className="sm:col-span-2 space-y-3 text-left">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Method A: Direct Image web URL</label>
+                          <input 
+                            type="text"
+                            value={cmsPage.profileImage || ''}
+                            onChange={e => setCmsPage({ ...cmsPage, profileImage: e.target.value })}
+                            placeholder="https://example.com/mypicture.jpg"
+                            className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1 font-sans">
+                          <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Method B: Local Direct File Upload</label>
+                          <div className="border border-dashed border-slate-350 rounded-lg p-3 bg-white text-center relative hover:bg-slate-50 transition cursor-pointer">
+                            <input 
+                              type="file"
+                              accept="image/*"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  if (file.size > 800000) {
+                                    alert("Image is too large! Please choose an image smaller than 800KB for optimization.");
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    if (event.target?.result) {
+                                      setCmsPage({
+                                        ...cmsPage,
+                                        profileImage: event.target.result as string
+                                      });
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div className="flex flex-col items-center justify-center space-y-1 pointer-events-none">
+                              <span className="text-[10px] font-semibold text-amber-700">Click to Select or Drag Image Here</span>
+                              <span className="text-[8px] text-slate-400 font-mono">Accepts JPG, JPEG, PNG (Max 800KB)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {/* Meta Tags Configuration */}
                 <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4">
                   <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BookOpen, GraduationCap, Award, FileText, ArrowRight, MapPin, Mail, ChevronRight, Sparkles, Heart } from 'lucide-react';
 import { BlogPost, Publication, CMSPage } from '../types';
 import { fetchCMSPage } from '../services/db';
-import profProfileImg from '../assets/images/faculty_prof_ebere_1781985440905.jpg';
+import profProfileImg from '../assets/images/prof_ebere_okorie_1781985221638.jpg';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -140,7 +140,7 @@ export default function Home({ onNavigate, latestBlogPosts, recentPublications }
               
               <img 
                 id="prof_profile_image"
-                src={profProfileImg} 
+                src={cmsPage?.profileImage || profProfileImg} 
                 alt="Prof. Ebere Okorie" 
                 referrerPolicy="no-referrer"
                 className="relative object-cover w-64 h-80 sm:w-72 sm:h-96 shadow-2xl z-10 border border-[#002147]/20 filter contrast-105 brightness-95 transition-all duration-300"

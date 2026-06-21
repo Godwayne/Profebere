@@ -3,6 +3,24 @@ import path from "path";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
+
+// Initialize Gemini Client
+let aiClient: any = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    aiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+  }
+} catch (e) {
+  console.warn("Error initializing Gemini SDK in server:", e);
+}
 
 function buildEmailTemplate(type: string, metadata: any) {
   const brandColor = "#0f172a"; // Slate/Navy
@@ -164,6 +182,102 @@ async function startServer() {
       status: "ok",
       timestamp: new Date().toISOString(),
       service: "Ebere Okorie Academic Portal Backend"
+    });
+  });
+
+  // Secure Live Chat Assistant powered by Gemini 3.5-flash & Criminological corpus fallback
+  app.post("/api/chat", async (req, res) => {
+    const { message, history } = req.body;
+    if (!message) {
+      res.status(400).json({ error: "Missing message payload." });
+      return;
+    }
+
+    const lowerMsg = message.toLowerCase();
+
+    // High quality scholar-specific rule map fallback
+    const ruleResponses = [
+      {
+        keywords: ["publication", "book", "article", "paper", "journal", "published", "write", "writing"],
+        answer: "Professor Ebere Okorie has published over 60 articles, reviews, and criminological textbooks on security studies, juvenile delinquency, and deviant behavior in Nigeria. You can view his complete interactive catalog in the 'Publications' section."
+      },
+      {
+        keywords: ["contact", "office", "email", "phone", "address", "reach", "touch", "location", "visit"],
+        answer: "You can contact Professor Ebere Okorie's office via email at younggist212@gmail.com, or visit the Department of Sociology and Anthropology at the University of Uyo, Akwa Ibom State, Nigeria. For quick messages, please fill out the contact form under the 'Get in Touch' tab."
+      },
+      {
+        keywords: ["donate", "outreach", "support", "contribution", "funding", "paystack", "opay", "money", "outreach"],
+        answer: "Professor Okorie's academic outreach programs, prison wellness, and local community reforms are supported by grants and contributions from civic organizations and readers. You can support securely via Paystack or OPay by navigating to the 'Support Outreach' tab."
+      },
+      {
+        keywords: ["who are you", "who is", "ebere", "okorie", "biography", "bio", "background"],
+        answer: "Professor Ebere James Okorie is a distinguished Professor of Criminology & Sociology at the Department of Sociology and Anthropology, University of Uyo, Nigeria. With over 25 years of service, he has championed research into youth delinquency and grassroots crime prevention. See his full biography in the 'About' tab."
+      },
+      {
+        keywords: ["research", "study", "project", "criminology", "sociology", "field", "crime", "delinquency"],
+        answer: "Prof. Okorie's research focuses on Criminology and socio-cultural anthropology. Specific directions include West African juvenile rehabilitation, grassroots community policing, and family cohesiveness. You can explore active and past academic studies in the 'Research' area."
+      }
+    ];
+
+    // Check if we can find a local match first
+    let fallbackReply = "";
+    for (const rule of ruleResponses) {
+      if (rule.keywords.some(kw => lowerMsg.includes(kw))) {
+        fallbackReply = rule.answer;
+        break;
+      }
+    }
+
+    if (!fallbackReply) {
+      fallbackReply = "Professor Ebere Okorie's academic portal welcomes queries on criminology, sociol-anthropology, research supervision, and scholarly collaboration. Let me know if you would like information on publications, active research projects, contacts, or outreach programs.";
+    }
+
+    // Try to call Gemini API if initialized
+    if (aiClient) {
+      try {
+        const systemInstruction = `You are the highly professional AI Academic Assistant for Professor Ebere Okorie. 
+Professor Ebere James Okorie is a distinguished Professor of Criminology & Sociology at the Department of Sociology and Anthropology, University of Uyo (UNIUYO), Nigeria.
+His research spans safety & security studies, juvenile delinquency, deviant behavior, local family therapy, and community surveillance. He has over 25 years of academic service, 60+ publications, 1200+ citations, and has supervised 50+ postgraduate candidates.
+Answer questions on his behalf in a helpful, warm, scholarly, and professional manner. Keep answers concise, factual, and brief (under 3-4 sentences/bullets if possible) so they fit elegantly in a live chat interface. Mention standard menu pages and tabs like 'publications', 'research', 'contact', 'gallery', or 'donate' where relevant. Do not invent facts, only speak on academic socio-anthropological concepts or details about his career.`;
+
+        // Format history for chat
+        const contentsArray: any[] = [];
+        if (history && Array.isArray(history)) {
+          history.slice(-6).forEach((h: any) => {
+            contentsArray.push({
+              role: h.role === 'user' ? 'user' : 'model',
+              parts: [{ text: h.content }]
+            });
+          });
+        }
+        contentsArray.push({
+          role: 'user',
+          parts: [{ text: message }]
+        });
+
+        const response = await aiClient.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: contentsArray,
+          config: {
+            systemInstruction: systemInstruction,
+            maxOutputTokens: 500,
+            temperature: 0.7,
+          }
+        });
+
+        if (response.text) {
+          res.json({ reply: response.text.trim() });
+          return;
+        }
+      } catch (geminiError: any) {
+        console.warn("Gemini API call returned an error, using local scholarly index:", geminiError.message || geminiError);
+      }
+    }
+
+    // Return the safe matches in simulated/fallback mode
+    res.json({ 
+      reply: fallbackReply, 
+      note: "Offline academic response cache."
     });
   });
 

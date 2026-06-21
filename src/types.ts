@@ -127,6 +127,7 @@ export interface CMSPage {
   slug: string;
   title: string;
   blocks: CMSBlock[];
+  profileImage?: string;
   metaTags?: {
     description?: string;
     keywords?: string;

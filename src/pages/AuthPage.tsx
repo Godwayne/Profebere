@@ -44,6 +44,12 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
         setError("Invalid passport password associated with this email.");
       } else if (err.code === 'auth/email-already-in-use') {
         setError("An authorized profile with this email address already exists.");
+      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('auth/unauthorized-domain'))) {
+        setError(
+          `Firebase Auth Error: The domain '${window.location.hostname}' is not authorized. ` +
+          "To fix this, go to your Firebase Console > Authentication > Settings > Authorized Domains, " +
+          `and click 'Add domain' to whitelist '${window.location.hostname}'.`
+        );
       } else {
         setError(err.message || 'Verification failed. Please review credit bounds or connection.');
       }
@@ -61,7 +67,15 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
       setTimeout(() => onSuccess(), 1000);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Google single sign-on was interrupted.");
+      if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('auth/unauthorized-domain'))) {
+        setError(
+          `Firebase Auth Error: The domain '${window.location.hostname}' is not authorized. ` +
+          "To fix this, go to your Firebase Console > Authentication > Settings > Authorized Domains, " +
+          `and click 'Add domain' to whitelist '${window.location.hostname}'.`
+        );
+      } else {
+        setError(err.message || "Google single sign-on was interrupted.");
+      }
     } finally {
       setLoading(false);
     }

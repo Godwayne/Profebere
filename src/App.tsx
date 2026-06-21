@@ -10,6 +10,7 @@ import ContactPage from './pages/ContactPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AuthPage from './pages/AuthPage';
 import UserDashboard from './pages/UserDashboard';
+import LiveChatWidget from './components/LiveChatWidget';
 
 import { AuthProvider, useAuth } from './components/AuthContext';
 import { Publication, BlogPost, Project, GalleryImage } from './types';
@@ -105,6 +106,7 @@ function AppContent() {
           )}
         </>
       )}
+      <LiveChatWidget />
     </Layout>
   );
 }
