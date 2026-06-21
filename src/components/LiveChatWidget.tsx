@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
-import { fetchChatConfig, logChatMessage } from '../services/db';
+import { fetchChatConfig, logChatMessage, subscribeToChatMessages } from '../services/db';
 import { ChatConfig } from '../types';
 
 interface ChatMessage {
@@ -72,6 +72,36 @@ export default function LiveChatWidget() {
 
     loadConfig();
   }, []);
+
+  // Live Chat real-time synchronization hook for the user state
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const unsubscribe = subscribeToChatMessages((allMsgs) => {
+      // Filter for current user's session ID and sort to chronological order (asc)
+      const sessionMsgs = allMsgs
+        .filter(m => m.sessionId === sessionId)
+        .map(m => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          timestamp: new Date(m.timestamp)
+        }))
+        .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      // Prepend welcome message
+      const welcome: ChatMessage = {
+        id: 'welcome',
+        role: 'assistant',
+        content: config.welcomeMessage || 'Greetings! I am the automated Academic Assistant for Professor Ebere Okorie. How can I assist you with your scholarly inquiries today?',
+        timestamp: new Date(sessionMsgs.length > 0 ? sessionMsgs[0].timestamp.getTime() - 1000 : Date.now())
+      };
+
+      setMessages([welcome, ...sessionMsgs]);
+    });
+
+    return () => unsubscribe();
+  }, [sessionId, config.welcomeMessage]);
 
   // Auto scroll to bottom
   useEffect(() => {

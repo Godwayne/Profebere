@@ -1,8 +1,8 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent, useRef } from 'react';
 import { 
   Lock, Key, LogOut, BookOpen, Layers, Rss, Camera, Mail, BarChart2, Plus, Edit2, Trash2, 
   Check, X, Eye, FileText, CheckCircle, Tag, Calendar, ShieldAlert, CreditCard, 
-  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download
+  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download, Send
 } from 'lucide-react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -18,7 +18,7 @@ import {
   fetchPaymentKeys, updatePaymentKeys,
   fetchCMSPage, saveCMSPage,
   fetchAdminCredentials, updateAdminCredentials,
-  fetchChatConfig, saveChatConfig, fetchChatMessages
+  fetchChatConfig, saveChatConfig, fetchChatMessages, subscribeToChatMessages, logChatMessage
 } from '../services/db';
 
 import { DonationSettings, PaymentKeys, CMSPage, CMSBlock, AdminSimCredentials, LiveChatMessage, ChatConfig } from '../types';
@@ -78,7 +78,16 @@ export default function AdminDashboard({
   const [chatConfig, setChatConfig] = useState<ChatConfig | null>(null);
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [adminReplyText, setAdminReplyText] = useState<string>('');
   const [chatLoading, setChatLoading] = useState(false);
+
+  const adminChatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (adminChatBottomRef.current) {
+      adminChatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, selectedSessionId, activeTab]);
 
   // Modals Forms
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -146,6 +155,37 @@ export default function AdminDashboard({
     }
   }, [isLoggedIn, selectedCmsSlug]);
 
+  // Real-time live chat messages subscription hook
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const unsubscribe = subscribeToChatMessages((msgs) => {
+      setChatMessages(msgs);
+      
+      // Auto-select the first active session if none is selected
+      setSelectedSessionId((currentId) => {
+        if (currentId) return currentId;
+        if (msgs.length > 0) {
+          const sessionLatestMsgMap = new Map<string, string>();
+          msgs.forEach((m) => {
+            const existing = sessionLatestMsgMap.get(m.sessionId);
+            if (!existing || m.timestamp > existing) {
+              sessionLatestMsgMap.set(m.sessionId, m.timestamp);
+            }
+          });
+          const sortedSessions = Array.from(sessionLatestMsgMap.entries())
+            .sort((a, b) => b[1].localeCompare(a[1]));
+          if (sortedSessions.length > 0) {
+            return sortedSessions[0][0];
+          }
+        }
+        return '';
+      });
+    });
+
+    return () => unsubscribe();
+  }, [isLoggedIn]);
+
   const loadChatConfigAndMessages = async () => {
     setChatLoading(true);
     try {
@@ -187,6 +227,25 @@ export default function AdminDashboard({
       setTimeout(() => setSaveSuccessMessage(''), 3000);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSendAdminReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminReplyText.trim() || !selectedSessionId) return;
+
+    const messageText = adminReplyText;
+    setAdminReplyText(''); // clear input instantly for great responsiveness
+
+    try {
+      await logChatMessage({
+        sessionId: selectedSessionId,
+        role: 'assistant',
+        content: messageText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Failed to post administrative chat reply:", err);
     }
   };
 
@@ -2050,7 +2109,30 @@ export default function AdminDashboard({
                               </span>
                             </div>
                           ))}
+                          <div ref={adminChatBottomRef} />
                         </div>
+
+                        {/* Interactive Admin Reply Box */}
+                        <form 
+                          onSubmit={handleSendAdminReply}
+                          className="border-t border-slate-200 bg-slate-50 p-3 flex items-center space-x-2 shrink-0"
+                        >
+                          <input 
+                            type="text"
+                            value={adminReplyText}
+                            onChange={(e) => setAdminReplyText(e.target.value)}
+                            placeholder={`Reply to LANE #${selectedSessionId.substr(5, 5).toUpperCase()} as Assistant...`}
+                            className="flex-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 px-3.5 py-2.5 focus:outline-none focus:border-amber-500 placeholder:text-slate-400 font-sans shadow-2xs"
+                          />
+                          <button 
+                            type="submit"
+                            disabled={!adminReplyText.trim()}
+                            className="cursor-pointer bg-slate-900 border border-slate-800 hover:bg-slate-950 text-gold px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            <span>Reply</span>
+                          </button>
+                        </form>
                       </>
                     );
                   })()

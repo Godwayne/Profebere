@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BookOpen, GraduationCap, Award, FileText, ArrowRight, MapPin, Mail, ChevronRight, Sparkles, Heart } from 'lucide-react';
 import { BlogPost, Publication, CMSPage } from '../types';
 import { fetchCMSPage } from '../services/db';
-import profProfileImg from '../assets/images/prof_ebere_okorie_1781985221638.jpg';
+import profProfileImg from '../assets/images/faculty_prof_ebere_1781985440905.jpg';
 
 interface HomeProps {
   onNavigate: (page: string) => void;

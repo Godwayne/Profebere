@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Download, GraduationCap, Briefcase, Award, BookOpen, Sparkles } from 'lucide-react';
 import { fetchCMSPage } from '../services/db';
 import { CMSPage } from '../types';
-import profProfileImg from '../assets/images/prof_ebere_okorie_1781985221638.jpg';
+import profProfileImg from '../assets/images/faculty_prof_ebere_1781985440905.jpg';
 
 interface AboutProps {
   onNavigate: (page: string) => void;

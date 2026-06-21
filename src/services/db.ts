@@ -9,7 +9,8 @@ import {
   doc, 
   query, 
   orderBy,
-  where
+  where,
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -1164,4 +1165,21 @@ export const fetchChatMessages = async (): Promise<LiveChatMessage[]> => {
     console.warn("Firestore fetchChatMessages failed, using local:", err);
   }
   return JSON.parse(localStorage.getItem('okorie_chat_messages') || '[]');
+};
+
+export const subscribeToChatMessages = (callback: (messages: LiveChatMessage[]) => void): (() => void) => {
+  try {
+    const q = query(collection(db, 'chat_messages'), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => doc.data() as LiveChatMessage);
+      // Synchronize to localStorage in the client
+      localStorage.setItem('okorie_chat_messages', JSON.stringify(msgs));
+      callback(msgs);
+    }, (err) => {
+      console.warn("Firestore collection onSnapshot listen error:", err);
+    });
+  } catch (err) {
+    console.warn("Firestore subscription failed to initialize:", err);
+  }
+  return () => {};
 };
