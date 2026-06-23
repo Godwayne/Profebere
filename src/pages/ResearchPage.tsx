@@ -1,5 +1,7 @@
-import { Shield, Users, Landmark, Trees, Cpu, DollarSign, Calendar, Eye } from 'lucide-react';
-import { Project } from '../types';
+import { useState, useEffect } from 'react';
+import { Shield, Sparkles, Users, Landmark, Trees, Cpu, DollarSign, Calendar, Eye } from 'lucide-react';
+import { Project, CMSPage } from '../types';
+import { fetchCMSPage } from '../services/db';
 
 interface ResearchPageProps {
   projects: Project[];
@@ -8,6 +10,19 @@ interface ResearchPageProps {
 export default function ResearchPage({ projects }: ResearchPageProps) {
   const ongoingProjects = projects.filter(p => p.status === 'ongoing');
   const completedProjects = projects.filter(p => p.status === 'completed');
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('research');
+        setCmsPage(page);
+      } catch (err) {
+        console.error("Failed to load research page CMS:", err);
+      }
+    };
+    loadCms();
+  }, []);
 
   const specializations = [
     {
@@ -33,15 +48,32 @@ export default function ResearchPage({ projects }: ResearchPageProps) {
       <div className="space-y-2">
         <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-gold flex items-center gap-2">
           <span className="w-6 h-[1px] bg-gold"></span>
-          Academic Focus & Mission
+          {cmsPage?.heroSubheading || "Academic Focus & Mission"}
         </h3>
         <h2 className="font-serif text-3xl font-bold text-navy uppercase leading-tight">
-          Research & <span className="text-gold italic font-light">Specializations</span>
+          {cmsPage?.heroTitle ? (
+            <span dangerouslySetInnerHTML={{ __html: cmsPage.heroTitle }} />
+          ) : (
+            <>Research & <span className="text-gold italic font-light">Specializations</span></>
+          )}
         </h2>
         <p className="text-navy/80 max-w-2xl text-xs leading-relaxed font-light mt-2">
-          Pioneering sociological and anthropological insights within southeastern Nigeria to understand socioeconomic transitions, empower vulnerable populations, and shape communal policy directives.
+          {cmsPage?.heroDescription || "Pioneering sociological and anthropological insights within southeastern Nigeria to understand socioeconomic transitions, empower vulnerable populations, and shape communal policy directives."}
         </p>
       </div>
+
+      {/* Render CMS Custom Blocks if any */}
+      {cmsPage?.blocks && cmsPage.blocks.length > 0 && (
+        <div className="space-y-4 border-l-2 border-gold/40 pl-4 py-1">
+          {cmsPage.blocks.map(block => (
+            <div key={block.id} className="space-y-1">
+              {block.heading && <h4 className="font-serif font-bold text-sm text-navy uppercase">{block.heading}</h4>}
+              {block.subheading && <p className="text-[10px] uppercase font-bold text-gold">{block.subheading}</p>}
+              {block.content && <p className="text-xs text-navy/80 font-light max-w-2xl">{block.content}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Specialization Areas */}
       <section id="specialization_areas" className="space-y-6">

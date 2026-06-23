@@ -131,16 +131,16 @@ export default function About({ onNavigate }: AboutProps) {
 
           <div className="text-navy/90 space-y-5 leading-relaxed text-sm font-light">
             <p>
-              <strong>Prof. Ebere Okorie</strong> is a distinguished Professor of Sociology and Anthropology at the prestigious University of Uyo, Akwa Ibom State, Nigeria. For over two and a half decades, her scholarly pursuits have centered on unraveling the complex, multi-tiered institutional frameworks governing community development, rural gender politics, and shifting familial designs within sub-Saharan Africa.
+              <strong>Prof. Ebere Okorie</strong> is a distinguished Professor of Sociology and Anthropology at the prestigious University of Uyo, Akwa Ibom State, Nigeria. For over two and a half decades, his scholarly pursuits have centered on unraveling the complex, multi-tiered institutional frameworks governing community development, rural gender politics, and shifting familial designs within sub-Saharan Africa.
             </p>
             <p>
-              Her scholarly roots trace back to her B.Sc. studies at the <em>University of Nigeria, Nsukka</em>, where she graduated with Honors. Driven by a passion to explore grassroots systems, she pursued her M.Sc. in Sociology at the <em>University of Port Harcourt</em>, after which she proceeded to the iconic school of sociological thought—the <em>University of Ibadan</em>, completing her Doctorate with a thesis analyzing Customary Land Tenure and Women’s Cooperative Unions.
+              His scholarly roots trace back to his B.Sc. studies at the <em>University of Nigeria, Nsukka</em>, where he graduated with Honors. Driven by a passion to explore grassroots systems, he pursued his M.Sc. in Sociology at the <em>University of Port Harcourt</em>, after which he proceeded to the iconic school of sociological thought—the <em>University of Ibadan</em>, completing his Doctorate with a thesis analyzing Customary Land Tenure and Women’s Cooperative Unions.
             </p>
             <p>
-              As a core researcher, she has served as project leader on various state-sponsored and international partnership grants. She remains a prominent advisor on environmental-social disruptions and rural women’s livelihood safeguards across Akwa Ibom and surrounding West African states.
+              As a core researcher, he has served as project leader on various state-sponsored and international partnership grants. He remains a prominent advisor on environmental-social disruptions and rural women’s livelihood safeguards across Akwa Ibom and surrounding West African states.
             </p>
             <p>
-              Beyond active research, Prof. Okorie is an enthusiast of academic mentorship. She has successfully supervised over 50 postgraduates (M.Sc. & Ph.D.) and continues to serve as an external examiner to multiple universities across Nigeria, promoting high methodological rigor and ethnographic authenticity.
+              Beyond active research, Prof. Okorie is an enthusiast of academic mentorship. He has successfully supervised over 50 postgraduates (M.Sc. & Ph.D.) and continues to serve as an external examiner to multiple universities across Nigeria, promoting high methodological rigor and ethnographic authenticity.
             </p>
           </div>
         </div>
@@ -166,7 +166,7 @@ export default function About({ onNavigate }: AboutProps) {
             {
               degree: "M.Sc. in Sociology",
               institution: "University of Port Harcourt, Nigeria",
-              details: "Concentration in Rural Livelihoods and Agrarian Cooperatives. Graduated at the top of her graduate seminar cohort.",
+              details: "Concentration in Rural Livelihoods and Agrarian Cooperatives. Graduated at the top of his graduate seminar cohort.",
               year: "1999"
             },
             {

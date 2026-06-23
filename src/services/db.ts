@@ -671,6 +671,22 @@ export const fetchAllUsers = async (): Promise<UserProfile[]> => {
   }
 };
 
+export const deleteUserProfile = async (uid: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, 'users', uid));
+    
+    // Sync to local
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const updated = localUsers.filter(u => u.uid !== uid);
+    localStorage.setItem('okorie_users', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore deleteUserProfile failed, performing local operation:", error);
+    const localUsers: UserProfile[] = JSON.parse(localStorage.getItem('okorie_users') || '[]');
+    const updated = localUsers.filter(u => u.uid !== uid);
+    localStorage.setItem('okorie_users', JSON.stringify(updated));
+  }
+};
+
 
 // ==========================================
 // TRANSACTION & CHECKSUM OPERATIONS

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { Mail, Phone, Building, CheckCircle2, Send, Loader2, Heart, CreditCard, Sparkles, ShieldCheck, HelpCircle, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
-import { addMessage, addTransaction, updateTransactionStatus, fetchDonationSettings, fetchPaymentKeys } from '../services/db';
-import { Transaction, DonationSettings, PaymentKeys } from '../types';
+import { addMessage, addTransaction, updateTransactionStatus, fetchDonationSettings, fetchPaymentKeys, fetchCMSPage } from '../services/db';
+import { Transaction, DonationSettings, PaymentKeys, CMSPage } from '../types';
 
 interface ContactPageProps {
   scrollToDonation?: boolean;
@@ -10,6 +10,20 @@ interface ContactPageProps {
 
 export default function ContactPage({ scrollToDonation = false }: ContactPageProps) {
   const { user, profile } = useAuth();
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('contact');
+        setCmsPage(page);
+      } catch (err) {
+        console.error("Failed to load contact page CMS:", err);
+      }
+    };
+    loadCms();
+  }, []);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -261,15 +275,32 @@ export default function ContactPage({ scrollToDonation = false }: ContactPagePro
       <div className="space-y-2">
         <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-gold flex items-center gap-2">
           <span className="w-6 h-[1px] bg-gold"></span>
-          Academic Liaison
+          {cmsPage?.heroSubheading || "Academic Liaison"}
         </h3>
         <h1 className="font-serif text-3xl font-bold text-navy uppercase leading-tight">
-          Academic <span className="text-gold italic font-light font-normal text-3xl">Contact Portal</span>
+          {cmsPage?.heroTitle ? (
+            <span dangerouslySetInnerHTML={{ __html: cmsPage.heroTitle }} />
+          ) : (
+            <>Academic <span className="text-gold italic font-light font-normal text-3xl">Contact Portal</span></>
+          )}
         </h1>
         <p className="text-navy/80 max-w-2xl text-xs leading-relaxed font-light mt-2">
-          For graduate supervision consults, panel examinations, research collaboration proposals, keynote requests, or community policy advocacy initiatives.
+          {cmsPage?.heroDescription || "For graduate supervision consults, panel examinations, research collaboration proposals, keynote requests, or community policy advocacy initiatives."}
         </p>
       </div>
+
+      {/* Render CMS Custom Blocks if any */}
+      {cmsPage?.blocks && cmsPage.blocks.length > 0 && (
+        <div className="space-y-4 border-l-2 border-gold/40 pl-4 py-1">
+          {cmsPage.blocks.map(block => (
+            <div key={block.id} className="space-y-1">
+              {block.heading && <h4 className="font-serif font-bold text-sm text-navy uppercase">{block.heading}</h4>}
+              {block.subheading && <p className="text-[10px] uppercase font-bold text-gold">{block.subheading}</p>}
+              {block.content && <p className="text-xs text-navy/80 font-light max-w-2xl">{block.content}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid md:grid-cols-12 gap-10 items-stretch font-sans">
         {/* Left Column: Details */}
@@ -333,7 +364,7 @@ export default function ContactPage({ scrollToDonation = false }: ContactPagePro
               <CheckCircle2 className="h-12 w-12 text-green-600" />
               <h3 className="font-serif text-2xl font-bold text-navy uppercase">Message Delivered!</h3>
               <p className="text-xs text-navy/70 max-w-sm leading-relaxed font-light">
-                Thank you for reaching out. Your academic correspondence has been written to the port message bank. Prof. Okorie or her research assistant will review it.
+                Thank you for reaching out. Your academic correspondence has been written to the port message bank. Prof. Okorie or his research assistant will review it.
               </p>
               <button 
                 id="reset_contact_form"

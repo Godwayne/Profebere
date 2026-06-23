@@ -5,10 +5,11 @@ import {
   Lock, ArrowRight, ShieldCheck, CreditCard, Sparkles, AlertCircle, HelpCircle, Star
 } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
-import { Publication, Comment, Transaction, FavoriteItem } from '../types';
+import { Publication, Comment, Transaction, FavoriteItem, CMSPage } from '../types';
 import { 
   addComment, fetchPublicationComments, addTransaction, 
-  updateTransactionStatus, updatePublication, fetchUserFavorites, addFavorite, removeFavorite
+  updateTransactionStatus, updatePublication, fetchUserFavorites, addFavorite, removeFavorite,
+  fetchCMSPage
 } from '../services/db';
 
 interface PublicationsPageProps {
@@ -21,6 +22,20 @@ export default function PublicationsPage({ publications }: PublicationsPageProps
   const [activeTab, setActiveTab] = useState<'all' | 'book' | 'journal' | 'conference'>('all');
   const [expandedPubId, setExpandedPubId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  // Load CMS Page configs
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('publications');
+        setCmsPage(page);
+      } catch (err) {
+        console.error("Failed to load publications page CMS:", err);
+      }
+    };
+    loadCms();
+  }, []);
 
   // Favorites System state
   const [userFavorites, setUserFavorites] = useState<FavoriteItem[]>([]);
@@ -337,15 +352,32 @@ export default function PublicationsPage({ publications }: PublicationsPageProps
       <div className="space-y-2">
         <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-gold flex items-center gap-2">
           <span className="w-6 h-[1px] bg-gold"></span>
-          Intellectual Library
+          {cmsPage?.heroSubheading || "Intellectual Library"}
         </h3>
         <h2 className="font-serif text-3xl font-bold text-navy uppercase leading-tight">
-          Academic <span className="text-gold italic font-light">Publications</span>
+          {cmsPage?.heroTitle ? (
+            <span dangerouslySetInnerHTML={{ __html: cmsPage.heroTitle }} />
+          ) : (
+            <>Academic <span className="text-gold italic font-light">Publications</span></>
+          )}
         </h2>
         <p className="text-navy/80 max-w-2xl text-xs leading-relaxed font-light mt-2">
-          Explore a comprehensive archive of monographs, course textbooks, award-winning international journals, and global conference assemblies highlighting rural developments, policing reforms, cyber-deviancy and Criminology.
+          {cmsPage?.heroDescription || "Explore a comprehensive archive of monographs, course textbooks, award-winning international journals, and global conference assemblies highlighting rural developments, policing reforms, cyber-deviancy and Criminology."}
         </p>
       </div>
+
+      {/* Render CMS Custom Blocks if any */}
+      {cmsPage?.blocks && cmsPage.blocks.length > 0 && (
+        <div className="space-y-4 border-l-2 border-gold/40 pl-4 py-1">
+          {cmsPage.blocks.map(block => (
+            <div key={block.id} className="space-y-1">
+              {block.heading && <h4 className="font-serif font-bold text-sm text-navy uppercase">{block.heading}</h4>}
+              {block.subheading && <p className="text-[10px] uppercase font-bold text-gold">{block.subheading}</p>}
+              {block.content && <p className="text-xs text-navy/80 font-light max-w-2xl">{block.content}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-none border border-navy/10 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between">

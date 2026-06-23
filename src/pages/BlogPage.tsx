@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Calendar, Tag, User, ChevronLeft, ArrowRight, NotepadText } from 'lucide-react';
-import { BlogPost } from '../types';
+import { useState, useEffect } from 'react';
+import { Calendar, Tag, User, ChevronLeft, ArrowRight, NotepadText, Sparkles } from 'lucide-react';
+import { BlogPost, CMSPage } from '../types';
+import { fetchCMSPage } from '../services/db';
 
 interface BlogPageProps {
   blogPosts: BlogPost[];
@@ -9,6 +10,19 @@ interface BlogPageProps {
 export default function BlogPage({ blogPosts }: BlogPageProps) {
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('blog');
+        setCmsPage(page);
+      } catch (err) {
+        console.error("Failed to load blog page CMS:", err);
+      }
+    };
+    loadCms();
+  }, []);
 
   const categories = ['all', 'Announcements', 'Academic Notes', 'Conferences'];
 
@@ -83,15 +97,32 @@ export default function BlogPage({ blogPosts }: BlogPageProps) {
       <div className="space-y-2">
         <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-gold flex items-center gap-2">
           <span className="w-6 h-[1px] bg-gold"></span>
-          Chronicles of Research
+          {cmsPage?.heroSubheading || "Chronicles of Research"}
         </h3>
         <h2 className="font-serif text-3xl font-bold text-navy uppercase leading-tight">
-          Academic Blog & <span className="text-gold italic font-light">News Feed</span>
+          {cmsPage?.heroTitle ? (
+            <span dangerouslySetInnerHTML={{ __html: cmsPage.heroTitle }} />
+          ) : (
+            <>Academic Blog & <span className="text-gold italic font-light">News Feed</span></>
+          )}
         </h2>
         <p className="text-navy/80 max-w-2xl text-xs leading-relaxed font-light mt-2">
-          Stay informed on Prof. Okorie's recent administrative callings, conference briefs, sociological insights, field studies, and comments regarding local public policy parameters.
+          {cmsPage?.heroDescription || "Stay informed on Prof. Okorie's recent administrative callings, conference briefs, sociological insights, field studies, and comments regarding local public policy parameters."}
         </p>
       </div>
+
+      {/* Render CMS Custom Blocks if any */}
+      {cmsPage?.blocks && cmsPage.blocks.length > 0 && (
+        <div className="space-y-4 border-l-2 border-gold/40 pl-4 py-1">
+          {cmsPage.blocks.map(block => (
+            <div key={block.id} className="space-y-1">
+              {block.heading && <h4 className="font-serif font-bold text-sm text-navy uppercase">{block.heading}</h4>}
+              {block.subheading && <p className="text-[10px] uppercase font-bold text-gold">{block.subheading}</p>}
+              {block.content && <p className="text-xs text-navy/80 font-light max-w-2xl">{block.content}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Category Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-navy/10 pb-4">

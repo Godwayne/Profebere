@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Camera, Calendar, Tag, X, ZoomIn } from 'lucide-react';
-import { GalleryImage } from '../types';
+import { useState, useEffect } from 'react';
+import { Camera, Calendar, Tag, X, ZoomIn, Sparkles } from 'lucide-react';
+import { GalleryImage, CMSPage } from '../types';
+import { fetchCMSPage } from '../services/db';
 
 interface GalleryPageProps {
   galleryImages: GalleryImage[];
@@ -9,6 +10,19 @@ interface GalleryPageProps {
 export default function GalleryPage({ galleryImages }: GalleryPageProps) {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
+  const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        const page = await fetchCMSPage('gallery');
+        setCmsPage(page);
+      } catch (err) {
+        console.error("Failed to load gallery page CMS:", err);
+      }
+    };
+    loadCms();
+  }, []);
 
   const categories = ['all', 'Lectures', 'Conferences', 'Fieldwork'];
 
@@ -23,15 +37,32 @@ export default function GalleryPage({ galleryImages }: GalleryPageProps) {
       <div className="space-y-2">
         <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-gold flex items-center gap-2">
           <span className="w-6 h-[1px] bg-gold"></span>
-          Visual Archives
+          {cmsPage?.heroSubheading || "Visual Archives"}
         </h3>
         <h2 className="font-serif text-3xl font-bold text-navy uppercase leading-tight">
-          Academic <span className="text-gold italic font-light">Gallery</span>
+          {cmsPage?.heroTitle ? (
+            <span dangerouslySetInnerHTML={{ __html: cmsPage.heroTitle }} />
+          ) : (
+            <>Academic <span className="text-gold italic font-light">Gallery</span></>
+          )}
         </h2>
         <p className="text-navy/80 max-w-2xl text-xs leading-relaxed font-light mt-2">
-          A visual record of global conferences, national sociology symposia, classroom lectures at University of Uyo, and empirical fieldwork operations across the villages and farmlands of southern Nigeria.
+          {cmsPage?.heroDescription || "A visual record of global conferences, national sociology symposia, classroom lectures at University of Uyo, and empirical fieldwork operations across the villages and farmlands of southern Nigeria."}
         </p>
       </div>
+
+      {/* Render CMS Custom Blocks if any */}
+      {cmsPage?.blocks && cmsPage.blocks.length > 0 && (
+        <div className="space-y-4 border-l-2 border-gold/40 pl-4 py-1">
+          {cmsPage.blocks.map(block => (
+            <div key={block.id} className="space-y-1">
+              {block.heading && <h4 className="font-serif font-bold text-sm text-navy uppercase">{block.heading}</h4>}
+              {block.subheading && <p className="text-[10px] uppercase font-bold text-gold">{block.subheading}</p>}
+              {block.content && <p className="text-xs text-navy/80 font-light max-w-2xl">{block.content}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Category Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-navy/10 pb-4">

@@ -2,11 +2,12 @@ import React, { useState, useEffect, FormEvent, useRef } from 'react';
 import { 
   Lock, Key, LogOut, BookOpen, Layers, Rss, Camera, Mail, BarChart2, Plus, Edit2, Trash2, 
   Check, X, Eye, FileText, CheckCircle, Tag, Calendar, ShieldAlert, CreditCard, 
-  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download, Send
+  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download, Send, Users
 } from 'lucide-react';
 import { auth } from '../firebase';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { Publication, BlogPost, Project, GalleryImage, ContactMessage, Transaction, Comment } from '../types';
+import { initializeApp } from 'firebase/app';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
+import { Publication, BlogPost, Project, GalleryImage, ContactMessage, Transaction, Comment, UserProfile } from '../types';
 import { 
   addPublication, updatePublication, deletePublication,
   addProject, updateProject, deleteProject,
@@ -18,7 +19,8 @@ import {
   fetchPaymentKeys, updatePaymentKeys,
   fetchCMSPage, saveCMSPage,
   fetchAdminCredentials, updateAdminCredentials,
-  fetchChatConfig, saveChatConfig, fetchChatMessages, subscribeToChatMessages, logChatMessage
+  fetchChatConfig, saveChatConfig, fetchChatMessages, subscribeToChatMessages, logChatMessage,
+  fetchAllUsers, deleteUserProfile, updateUserProfile, createUserProfile
 } from '../services/db';
 
 import { DonationSettings, PaymentKeys, CMSPage, CMSBlock, AdminSimCredentials, LiveChatMessage, ChatConfig } from '../types';
@@ -152,6 +154,7 @@ export default function AdminDashboard({
       loadPaymentKeys();
       loadCmsPage(selectedCmsSlug);
       loadChatConfigAndMessages();
+      loadUsers();
     }
   }, [isLoggedIn, selectedCmsSlug]);
 
@@ -304,6 +307,117 @@ export default function AdminDashboard({
       console.error(err);
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const [usersList, setUsersList] = useState<UserProfile[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  const loadUsers = async () => {
+    setUsersLoading(true);
+    try {
+      const u = await fetchAllUsers();
+      setUsersList(u || []);
+    } catch (err) {
+      console.error("Failed to load users list:", err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (uid: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this user profile? This cannot be undone.")) return;
+    try {
+      await deleteUserProfile(uid);
+      setUsersList(prev => prev.filter(u => u.uid !== uid));
+    } catch (err) {
+      console.error("Error deleting user profile:", err);
+    }
+  };
+
+  const [showAddUserForm, setShowAddUserForm] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserIsAdmin, setNewUserIsAdmin] = useState(false);
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [addUserError, setAddUserError] = useState('');
+  const [addUserSuccess, setAddUserSuccess] = useState('');
+
+  const handleAddNewUserSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setAddUserLoading(true);
+    setAddUserError('');
+    setAddUserSuccess('');
+
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      setAddUserError("All fields (name, email, password) are strictly required.");
+      setAddUserLoading(false);
+      return;
+    }
+
+    try {
+      const config = auth.app.options;
+      const tempAppName = `temp_app_${Date.now()}`;
+      const tempApp = initializeApp(config, tempAppName);
+      const tempAuth = getAuth(tempApp);
+
+      const userCred = await createUserWithEmailAndPassword(tempAuth, newUserEmail, newUserPassword);
+      const uid = userCred.user.uid;
+
+      const profile = await createUserProfile(uid, newUserEmail, newUserName, newUserIsAdmin);
+      await signOut(tempAuth);
+
+      setUsersList(prev => [profile, ...prev]);
+      setAddUserSuccess(`User profile for "${newUserName}" created successfully in registration ledger!`);
+      
+      // Clear fields
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserIsAdmin(false);
+      
+      setTimeout(() => {
+        setShowAddUserForm(false);
+        setAddUserSuccess('');
+      }, 3000);
+
+    } catch (err: any) {
+      console.warn("Auth user creation failed, falling back to profile record seeding:", err);
+      // Fallback: create Firestore profile record directly
+      try {
+        const dummyUid = "prof_" + Math.random().toString(36).substring(2, 10);
+        const profile = await createUserProfile(dummyUid, newUserEmail, newUserName, newUserIsAdmin);
+        setUsersList(prev => [profile, ...prev]);
+        setAddUserSuccess(`Stored user profile record in Firestore directory ("${newUserName}").`);
+        
+        setNewUserName('');
+        setNewUserEmail('');
+        setNewUserPassword('');
+        setNewUserIsAdmin(false);
+
+        setTimeout(() => {
+          setShowAddUserForm(false);
+          setAddUserSuccess('');
+        }, 3000);
+      } catch (innerErr: any) {
+        setAddUserError(innerErr?.message || "Registration operation failed.");
+      }
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
+  const handleToggleUserAdmin = async (userProf: UserProfile) => {
+    try {
+      const updatedProfile = {
+        ...userProf,
+        isAdmin: !userProf.isAdmin
+      };
+      await updateUserProfile(updatedProfile);
+      setUsersList(prev => prev.map(u => u.uid === userProf.uid ? updatedProfile : u));
+    } catch (err) {
+      console.error("Error setting/unsetting admin privilege:", err);
     }
   };
 
@@ -717,6 +831,7 @@ export default function AdminDashboard({
               { id: 'adminCredentials', label: 'Admin Security', icon: Key },
               { id: 'pageCMS', label: 'CMS Page Builder', icon: Sparkles },
               { id: 'liveChat', label: 'Live Chat Center', icon: MessageSquare, count: Array.from(new Set(chatMessages.map(m => m.sessionId))).length },
+              { id: 'users', label: 'User Directory', icon: Users, count: usersList.length },
             ].map(navItem => (
               <button
                 key={navItem.id}
@@ -1565,8 +1680,11 @@ export default function AdminDashboard({
                 >
                   <option value="home">Homepage Layout CMS</option>
                   <option value="about">About Biography Page CMS</option>
-                  <option value="publications">Publications Tab CMS Header</option>
-                  <option value="blog">Research News CMS Header</option>
+                  <option value="publications">Publications Page CMS</option>
+                  <option value="blog">Chronicles blog & News Page CMS</option>
+                  <option value="research">Research & Specializations Page CMS</option>
+                  <option value="gallery">Academic Gallery Page CMS</option>
+                  <option value="contact">Contact & Liaison Page CMS</option>
                 </select>
               </div>
               <button
@@ -1673,15 +1791,15 @@ export default function AdminDashboard({
                   </div>
                 )}
                 
-                {/* Homepage Hero Banner text elements customization */}
-                {selectedCmsSlug === 'home' && (
-                  <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4 text-left">
-                    <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
-                      <Sparkles className="h-4 w-4 text-amber-550 shrink-0" />
-                      <span>Homepage Hero Text Customization</span>
-                    </h4>
-                    
-                    <div className="grid sm:grid-cols-2 gap-4">
+                {/* Hero / Page Header text elements customization (Available for all slugs) */}
+                <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4 text-left">
+                  <h4 className="font-serif font-bold text-slate-900 text-sm border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
+                    <Sparkles className="h-4 w-4 text-gold shrink-0 animate-pulse" />
+                    <span className="uppercase text-navy font-bold">{selectedCmsSlug} Page Header & Title Customization</span>
+                  </h4>
+                  
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {selectedCmsSlug === 'home' ? (
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Institution Tag</label>
                         <input 
@@ -1692,19 +1810,32 @@ export default function AdminDashboard({
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
                         />
                       </div>
-                      
+                    ) : (
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Title / Name Heading</label>
+                        <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Archive Subheading Badge</label>
                         <input 
                           type="text"
-                          value={cmsPage.heroTitle || ''}
-                          onChange={e => setCmsPage({ ...cmsPage, heroTitle: e.target.value })}
-                          placeholder="Prof. Ebere Okorie"
+                          value={cmsPage.heroSubheading || ''}
+                          onChange={e => setCmsPage({ ...cmsPage, heroSubheading: e.target.value })}
+                          placeholder="e.g., Intellectual Library"
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
                         />
                       </div>
-                    </div>
+                    )}
                     
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Main Heading Title (HTML Supported)</label>
+                      <input 
+                        type="text"
+                        value={cmsPage.heroTitle || ''}
+                        onChange={e => setCmsPage({ ...cmsPage, heroTitle: e.target.value })}
+                        placeholder="e.g. Academic Publications"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
+                      />
+                    </div>
+                  </div>
+                  
+                  {selectedCmsSlug === 'home' && (
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Academic Subheading (e.g. Professor of Sociology)</label>
                       <input 
@@ -1715,19 +1846,19 @@ export default function AdminDashboard({
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-sans"
                       />
                     </div>
-                    
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Hero Brief Biography Summary</label>
-                      <textarea 
-                        rows={3}
-                        value={cmsPage.heroDescription || ''}
-                        onChange={e => setCmsPage({ ...cmsPage, heroDescription: e.target.value })}
-                        placeholder="Brief summary paragraph describing his research domains and department..."
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-gold font-sans"
-                      />
-                    </div>
+                  )}
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Page description & intro paragraph</label>
+                    <textarea 
+                      rows={3}
+                      value={cmsPage.heroDescription || ''}
+                      onChange={e => setCmsPage({ ...cmsPage, heroDescription: e.target.value })}
+                      placeholder="Brief descriptive paragraph for this page..."
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-250 rounded-lg text-xs focus:outline-none focus:border-gold font-sans"
+                    />
                   </div>
-                )}
+                </div>
                 
                 {/* Meta Tags Configuration */}
                 <div className="border border-slate-200 bg-white p-4 rounded-xl space-y-4">
@@ -2145,6 +2276,223 @@ export default function AdminDashboard({
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* TAB: USER DIRECTORY PANEL */}
+        {activeTab === 'users' && (
+          <div className="space-y-6 animate-fade-in text-left font-sans">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-slate-250 pb-3 gap-3">
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-slate-900">User accounts Directory</h3>
+                <p className="text-xs text-slate-500">View and manage all registered users, purchase logs, and authorization levels.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowAddUserForm(!showAddUserForm)}
+                  className="cursor-pointer bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 text-xs font-sans flex items-center space-x-1.5 rounded-lg border border-amber-600 transition"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add New User</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={loadUsers}
+                  className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-950 font-bold px-3 py-1.5 text-xs font-mono flex items-center space-x-1.5 rounded-lg border border-slate-200"
+                >
+                  <span>Synchronize User Profiles</span>
+                </button>
+              </div>
+            </div>
+
+            {showAddUserForm && (
+              <form onSubmit={handleAddNewUserSubmit} className="bg-[#fcfbfa] border border-amber-200 p-5 rounded-xl space-y-4 max-w-2xl text-left animate-scale-up shadow-xs">
+                <div className="border-b border-slate-100 pb-2 flex justify-between items-center">
+                  <h4 className="font-serif font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <Users className="h-4 w-4 text-amber-500" />
+                    <span>Create New Reader / Admin Account</span>
+                  </h4>
+                  <button 
+                    type="button"
+                    onClick={() => setShowAddUserForm(false)} 
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {addUserError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-mono rounded-lg flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{addUserError}</span>
+                  </div>
+                )}
+
+                {addUserSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono rounded-lg flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    <span>{addUserSuccess}</span>
+                  </div>
+                )}
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Full Name</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newUserName}
+                      onChange={e => setNewUserName(e.target.value)}
+                      placeholder="e.g. Dr. John Doe"
+                      className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-xs font-sans focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Email Address</label>
+                    <input 
+                      type="email" 
+                      required
+                      value={newUserEmail}
+                      onChange={e => setNewUserEmail(e.target.value)}
+                      placeholder="e.g. johndoe@gmail.com"
+                      className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-xs font-sans focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Secure Access Password</label>
+                    <input 
+                      type="password" 
+                      required
+                      value={newUserPassword}
+                      onChange={e => setNewUserPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      className="w-full px-3 py-2 bg-white border border-slate-250 rounded-lg text-xs font-sans focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="space-y-1 select-none pt-4 flex items-center">
+                    <label className="inline-flex items-center space-x-2 cursor-pointer text-xs font-semibold text-slate-700">
+                      <input 
+                        type="checkbox" 
+                        checked={newUserIsAdmin}
+                        onChange={e => setNewUserIsAdmin(e.target.checked)}
+                        className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 h-4 w-4"
+                      />
+                      <span>Grant Administrator Privileges</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserForm(false)}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-xs cursor-pointer font-sans"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addUserLoading}
+                    className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold cursor-pointer font-sans flex items-center space-x-1.5 disabled:opacity-50"
+                  >
+                    {addUserLoading ? (
+                      <span>Executing secure sign-up...</span>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Register Account</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {usersLoading ? (
+              <div className="py-20 text-center text-slate-400">
+                <Users className="h-8 w-8 mx-auto mb-2 text-slate-350 animate-bounce" />
+                <span className="font-mono text-xs">Querying registered user profiles from secure database...</span>
+              </div>
+            ) : usersList.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                <Users className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+                <span className="font-mono text-xs">No registered users found in directory ledger.</span>
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-sans">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-mono text-[9px] uppercase font-bold text-slate-500 tracking-wider">
+                      <tr>
+                        <th className="px-5 py-4">Display Name</th>
+                        <th className="px-5 py-4">Email Address</th>
+                        <th className="px-5 py-4">UID / Date Registered</th>
+                        <th className="px-5 py-4">Privileges</th>
+                        <th className="px-5 py-4">Library Access</th>
+                        <th className="px-5 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {usersList.map((usr) => (
+                        <tr key={usr.uid} className="hover:bg-slate-50/75 transition-colors">
+                          <td className="px-5 py-4 font-bold text-slate-800">
+                            {usr.displayName || <span className="italic text-slate-400">Not set</span>}
+                          </td>
+                          <td className="px-5 py-4 font-mono text-slate-600">{usr.email}</td>
+                          <td className="px-5 py-4 space-y-1">
+                            <div className="font-mono text-[8px] uppercase tracking-wide bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-sm w-fit">
+                              {usr.uid.substring(0, 8)}...
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {usr.createdAt ? new Date(usr.createdAt).toLocaleDateString() : 'N/A'}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4">
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                              usr.isAdmin 
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}>
+                              {usr.isAdmin ? 'Administrator' : 'Standard User'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 space-y-1">
+                            <div className="text-[10px] text-slate-600 flex items-center gap-1">
+                              <span className="font-bold text-slate-800">
+                                {usr.purchasedPublications?.length || 0}
+                              </span> Purchased
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              Liked: {usr.likedPublications?.length || 0}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-right space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleUserAdmin(usr)}
+                              className="px-2 py-1 bg-slate-50 border border-slate-250 text-slate-600 hover:bg-slate-100 hover:text-slate-900 rounded font-mono text-[9px] font-bold uppercase tracking-wider cursor-pointer font-sans"
+                            >
+                              {usr.isAdmin ? 'Revoke Admin' : 'Make Admin'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(usr.uid)}
+                              className="px-2 py-1 bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 hover:text-rose-950 rounded font-mono text-[9px] font-bold uppercase tracking-wider cursor-pointer font-sans"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
