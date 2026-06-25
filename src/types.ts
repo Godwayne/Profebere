@@ -22,6 +22,13 @@ export interface UserProfile {
   purchasedPublications?: string[]; // Array of purchased pub IDs
   createdAt: string;
   isAdmin?: boolean;
+  schoolName?: string;
+  faculty?: string;
+  department?: string;
+  regNumber?: string;
+  phoneNumber?: string;
+  country?: string;
+  state?: string;
 }
 
 export interface Transaction {
@@ -156,6 +163,16 @@ export interface ChatConfig {
   suggestions: string[];
   assistantName: string;
   chatbotEnabled: boolean;
+}
+
+export interface HomepageAd {
+  id: string;
+  title: string;
+  imageUrl: string;
+  linkUrl: string;
+  description: string;
+  isActive: boolean;
+  dateCreated: string;
 }
 
 

@@ -2,12 +2,13 @@ import React, { useState, useEffect, FormEvent, useRef } from 'react';
 import { 
   Lock, Key, LogOut, BookOpen, Layers, Rss, Camera, Mail, BarChart2, Plus, Edit2, Trash2, 
   Check, X, Eye, FileText, CheckCircle, Tag, Calendar, ShieldAlert, CreditCard, 
-  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download, Send, Users
+  MessageSquare, Sparkles, AlertCircle, Heart, ArrowRight, ShieldCheck, Download, Send, Users,
+  Megaphone, ExternalLink
 } from 'lucide-react';
 import { auth } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
-import { Publication, BlogPost, Project, GalleryImage, ContactMessage, Transaction, Comment, UserProfile } from '../types';
+import { Publication, BlogPost, Project, GalleryImage, ContactMessage, Transaction, Comment, UserProfile, HomepageAd } from '../types';
 import { 
   addPublication, updatePublication, deletePublication,
   addProject, updateProject, deleteProject,
@@ -20,7 +21,8 @@ import {
   fetchCMSPage, saveCMSPage,
   fetchAdminCredentials, updateAdminCredentials,
   fetchChatConfig, saveChatConfig, fetchChatMessages, subscribeToChatMessages, logChatMessage,
-  fetchAllUsers, deleteUserProfile, updateUserProfile, createUserProfile
+  fetchAllUsers, deleteUserProfile, updateUserProfile, createUserProfile,
+  fetchHomepageAds, addHomepageAd, deleteHomepageAd, toggleHomepageAdStatus, updateHomepageAd
 } from '../services/db';
 
 import { DonationSettings, PaymentKeys, CMSPage, CMSBlock, AdminSimCredentials, LiveChatMessage, ChatConfig } from '../types';
@@ -76,6 +78,15 @@ export default function AdminDashboard({
   // 'analytics' | 'publications' | 'projects' | 'blog' | 'gallery' | 'messages' | 'transactions' | 'comments'
   const [activeTab, setActiveTab] = useState<string>('analytics');
 
+  // Multiple Delete Selection States
+  const [selectedBlogIds, setSelectedBlogIds] = useState<string[]>([]);
+  const [selectedCmsBlockIds, setSelectedCmsBlockIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedBlogIds([]);
+    setSelectedCmsBlockIds([]);
+  }, [activeTab, selectedCmsSlug]);
+
   // Live Chat Management State
   const [chatConfig, setChatConfig] = useState<ChatConfig | null>(null);
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
@@ -93,7 +104,7 @@ export default function AdminDashboard({
 
   // Modals Forms
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<'pub' | 'proj' | 'blog' | 'gal' | null>(null);
+  const [modalType, setModalType] = useState<'pub' | 'proj' | 'blog' | 'gal' | 'ad' | null>(null);
   const [editItem, setEditItem] = useState<any | null>(null);
 
   // Forms Fields State
@@ -110,6 +121,11 @@ export default function AdminDashboard({
   const [galForm, setGalForm] = useState({
     imageUrl: 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=600', caption: '', category: 'Lectures'
   });
+  const [adForm, setAdForm] = useState({
+    title: '', imageUrl: 'https://i.imgur.com/uYvEwbo.jpeg', linkUrl: '', description: '', isActive: true
+  });
+
+  const [homepageAds, setHomepageAds] = useState<HomepageAd[]>([]);
 
   // Load and synchronize Admin Credentials
   const syncAdminCredentials = async () => {
@@ -145,6 +161,15 @@ export default function AdminDashboard({
     return () => unsubscribe();
   }, []);
 
+  const loadHomepageAds = async () => {
+    try {
+      const ads = await fetchHomepageAds();
+      setHomepageAds(ads);
+    } catch (err) {
+      console.error("Failed to load homepage ads:", err);
+    }
+  };
+
   // Fetch Message Inbox & E-commerce metrics
   useEffect(() => {
     if (isLoggedIn) {
@@ -155,6 +180,7 @@ export default function AdminDashboard({
       loadCmsPage(selectedCmsSlug);
       loadChatConfigAndMessages();
       loadUsers();
+      loadHomepageAds();
     }
   }, [isLoggedIn, selectedCmsSlug]);
 
@@ -535,6 +561,15 @@ export default function AdminDashboard({
     setCmsPage({ ...cmsPage, blocks: filteredBlocks });
   };
 
+  const handleDeleteMultipleCmsBlocks = () => {
+    if (!cmsPage || selectedCmsBlockIds.length === 0) return;
+    if (window.confirm(`Are you sure you want to remove the ${selectedCmsBlockIds.length} selected blocks from the page structure? You will need to click 'Lock & Publish' to save this permanently.`)) {
+      const filteredBlocks = cmsPage.blocks.filter(b => !selectedCmsBlockIds.includes(b.id));
+      setCmsPage({ ...cmsPage, blocks: filteredBlocks });
+      setSelectedCmsBlockIds([]);
+    }
+  };
+
   // Login handler
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -542,12 +577,34 @@ export default function AdminDashboard({
     setAuthLoading(true);
 
     if (email === adminCreds.email && password === adminCreds.passwordHash) {
-      // Local Master Simulation override
-      sessionStorage.setItem('okorie_admin_sim', 'true');
-      setIsLoggedIn(true);
-      setIsAdminLocalSim(true);
-      setAuthLoading(false);
-      return;
+      // Simulation Credentials with Real Firebase Auth backing
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        sessionStorage.setItem('okorie_admin_sim', 'true');
+        setIsLoggedIn(true);
+        setIsAdminLocalSim(false);
+        setAuthLoading(false);
+        return;
+      } catch (err: any) {
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+          try {
+            await createUserWithEmailAndPassword(auth, email, password);
+            sessionStorage.setItem('okorie_admin_sim', 'true');
+            setIsLoggedIn(true);
+            setIsAdminLocalSim(false);
+            setAuthLoading(false);
+            return;
+          } catch (createErr) {
+            console.error("Failed registering on-the-fly simulated admin:", createErr);
+          }
+        }
+        // Fallback to purely local sim
+        sessionStorage.setItem('okorie_admin_sim', 'true');
+        setIsLoggedIn(true);
+        setIsAdminLocalSim(true);
+        setAuthLoading(false);
+        return;
+      }
     }
 
     try {
@@ -603,22 +660,23 @@ export default function AdminDashboard({
   // ==========================================
   // MODAL CREATION/MANAGEMENT
   // ==========================================
-  const openAddModal = (type: 'pub' | 'proj' | 'blog' | 'gal') => {
+  const openAddModal = (type: 'pub' | 'proj' | 'blog' | 'gal' | 'ad') => {
     setModalType(type);
     setEditItem(null);
     setIsModalOpen(true);
     
     // Reset inputs
     setPubForm({ 
-      title: '', authors: 'Prof. Ebere Okorie', type: 'journal', publisher: '', 
-      year: new Date().getFullYear(), link: '', description: '', isPaid: false, price: 5000, downloadUrl: '' 
+       title: '', authors: 'Prof. Ebere Okorie', type: 'journal', publisher: '', 
+       year: new Date().getFullYear(), link: '', description: '', isPaid: false, price: 5000, downloadUrl: '' 
     });
     setProjForm({ title: '', status: 'ongoing', role: 'Principal Investigator', description: '', funding: '', timeline: '2026 - Present' });
     setBlogForm({ title: '', content: '', excerpt: '', category: 'Announcements', imageUrl: 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=600' });
     setGalForm({ imageUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=600', caption: '', category: 'Lectures' });
+    setAdForm({ title: '', imageUrl: 'https://i.imgur.com/uYvEwbo.jpeg', linkUrl: '', description: '', isActive: true });
   };
 
-  const openEditModal = (type: 'pub' | 'proj' | 'blog', item: any) => {
+  const openEditModal = (type: 'pub' | 'proj' | 'blog' | 'ad', item: any) => {
     setModalType(type);
     setEditItem(item);
     setIsModalOpen(true);
@@ -652,6 +710,14 @@ export default function AdminDashboard({
         excerpt: item.excerpt,
         category: item.category,
         imageUrl: item.imageUrl || ''
+      });
+    } else if (type === 'ad') {
+      setAdForm({
+        title: item.title,
+        imageUrl: item.imageUrl || 'https://i.imgur.com/uYvEwbo.jpeg',
+        linkUrl: item.linkUrl || '',
+        description: item.description || '',
+        isActive: item.isActive ?? true
       });
     }
   };
@@ -688,6 +754,13 @@ export default function AdminDashboard({
         }
       } else if (modalType === 'gal') {
         await addGalleryImage({ ...galForm, date: new Date().toISOString().split('T')[0] });
+      } else if (modalType === 'ad') {
+        if (editItem) {
+          await updateHomepageAd(editItem.id, { ...adForm, dateCreated: editItem.dateCreated || new Date().toISOString().split('T')[0] });
+        } else {
+          await addHomepageAd({ ...adForm, dateCreated: new Date().toISOString().split('T')[0] });
+        }
+        loadHomepageAds();
       }
 
       setIsModalOpen(false);
@@ -697,17 +770,39 @@ export default function AdminDashboard({
     }
   };
 
-  const handleDeleteItem = async (type: 'pub' | 'proj' | 'blog' | 'gal', id: string) => {
+  const handleDeleteItem = async (type: 'pub' | 'proj' | 'blog' | 'gal' | 'ad', id: string) => {
     if (window.confirm("Are you sure you want to delete this resource permanently?")) {
       try {
         if (type === 'pub') await deletePublication(id);
         else if (type === 'proj') await deleteProject(id);
         else if (type === 'blog') await deleteBlogPost(id);
         else if (type === 'gal') await deleteGalleryImage(id);
+        else if (type === 'ad') {
+          await deleteHomepageAd(id);
+          loadHomepageAds();
+        }
         
         onRefreshData();
-      } catch (err) {
+      } catch (err: any) {
         console.error("Delete error", err);
+        window.alert(`Failed to delete resource from database: ${err.message || 'Permission denied or network issue'}. If you are in local simulation mode, please authenticate with active credentials first.`);
+      }
+    }
+  };
+
+  const handleDeleteMultipleBlogPosts = async () => {
+    if (selectedBlogIds.length === 0) return;
+    if (window.confirm(`Are you sure you want to delete the ${selectedBlogIds.length} selected blog/news posts permanently?`)) {
+      try {
+        setSettingsLoading(true);
+        await Promise.all(selectedBlogIds.map(id => deleteBlogPost(id)));
+        setSelectedBlogIds([]);
+        onRefreshData();
+      } catch (err: any) {
+        console.error("Multiple delete error", err);
+        window.alert(`Failed to delete some selected posts: ${err.message || 'Permission denied'}. Please ensure you are logged in as admin.`);
+      } finally {
+        setSettingsLoading(false);
       }
     }
   };
@@ -823,6 +918,7 @@ export default function AdminDashboard({
               { id: 'projects', label: 'Research Projects', icon: Layers, count: projects.length },
               { id: 'blog', label: 'News & Blog', icon: Rss, count: blogPosts.length },
               { id: 'gallery', label: 'Event Gallery', icon: Camera, count: galleryImages.length },
+              { id: 'homepageAds', label: 'Homepage Ads', icon: Megaphone, count: homepageAds.length },
               { id: 'messages', label: 'Inquiries Inbox', icon: Mail, count: unreadMessagesCount, hasBadge: true },
               { id: 'transactions', label: 'Purchase Ledger', icon: CreditCard, count: successfulTxns.length },
               { id: 'comments', label: 'Comments Queue', icon: MessageSquare, count: pendingCommentsCount, hasBadge: true },
@@ -1059,10 +1155,61 @@ export default function AdminDashboard({
               </button>
             </div>
 
+            {blogPosts.length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between gap-4 text-xs font-sans">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="selectAllBlogs"
+                    checked={selectedBlogIds.length === blogPosts.length && blogPosts.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedBlogIds(blogPosts.map(p => p.id));
+                      } else {
+                        setSelectedBlogIds([]);
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <label htmlFor="selectAllBlogs" className="font-semibold text-slate-700 cursor-pointer select-none">
+                    Select All ({blogPosts.length} posts)
+                  </label>
+                </div>
+
+                {selectedBlogIds.length > 0 && (
+                  <div className="flex items-center gap-3 animate-fade-in">
+                    <span className="font-medium text-slate-600 font-mono">
+                      {selectedBlogIds.length} item{selectedBlogIds.length > 1 ? 's' : ''} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteMultipleBlogPosts}
+                      className="cursor-pointer bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-bold px-3 py-1.5 rounded-lg text-xs font-sans flex items-center space-x-1.5 transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Delete Selected</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-3">
               {blogPosts.map(post => (
                 <div key={post.id} className="bg-white p-4 border border-slate-150 flex justify-between items-center gap-4">
                   <div className="flex items-center gap-3">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedBlogIds.includes(post.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedBlogIds(prev => [...prev, post.id]);
+                        } else {
+                          setSelectedBlogIds(prev => prev.filter(id => id !== post.id));
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer shrink-0"
+                    />
                     {post.imageUrl && (
                       <img src={post.imageUrl} alt={post.title} referrerPolicy="no-referrer" className="w-12 h-12 rounded(lg) object-cover shrink-0" />
                     )}
@@ -1135,6 +1282,105 @@ export default function AdminDashboard({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* TAB: HOMEPAGE ADS */}
+        {activeTab === 'homepageAds' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center border-b border-slate-250 pb-3">
+              <h3 className="font-serif text-2xl font-bold text-slate-900">Manage Homepage Advertisements</h3>
+              <button 
+                onClick={() => openAddModal('ad')}
+                className="bg-navy text-gold hover:bg-gold hover:text-navy text-xs px-4 py-2.5 font-mono uppercase font-bold flex items-center space-x-1 cursor-pointer"
+              >
+                <Plus className="h-5 w-5" />
+                <span>Add Ad Banner</span>
+              </button>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-6">
+              {homepageAds.map(ad => (
+                <div key={ad.id} className="bg-white border-2 border-slate-100 p-5 flex flex-col justify-between shadow-xs hover:shadow-md transition gap-4">
+                  <div className="space-y-3">
+                    <div className="relative aspect-video bg-slate-50 border border-slate-150 overflow-hidden">
+                      <img 
+                        src={ad.imageUrl} 
+                        alt={ad.title} 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover object-top"
+                      />
+                      <div className="absolute top-2 right-2">
+                        <span className={`px-2 py-0.5 rounded-full font-mono text-[9px] font-bold ${
+                          ad.isActive ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}>
+                          {ad.isActive ? 'Active' : 'Draft'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-left">
+                      <h4 className="font-serif font-bold text-slate-950 text-base line-clamp-1">{ad.title}</h4>
+                      <p className="text-xs text-slate-500 line-clamp-2">{ad.description}</p>
+                      {ad.linkUrl && (
+                        <a 
+                          href={ad.linkUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="inline-flex items-center gap-1 text-[11px] font-mono text-amber-600 hover:underline pt-1"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          <span className="truncate max-w-[200px]">{ad.linkUrl}</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="checkbox" 
+                        id={`ad_status_${ad.id}`}
+                        checked={ad.isActive}
+                        onChange={async (e) => {
+                          const val = e.target.checked;
+                          await toggleHomepageAdStatus(ad.id, val);
+                          loadHomepageAds();
+                        }}
+                        className="h-4 w-4 text-amber-500 focus:ring-amber-400 border-gray-300 rounded cursor-pointer"
+                      />
+                      <label htmlFor={`ad_status_${ad.id}`} className="text-[11px] font-mono uppercase font-bold text-slate-500 cursor-pointer">
+                        Active Banner
+                      </label>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => openEditModal('ad', ad)}
+                        className="p-1.5 text-slate-500 hover:text-amber-500 hover:bg-amber-50 rounded transition cursor-pointer"
+                        title="Edit Banner"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteItem('ad', ad.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                        title="Delete Banner"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {homepageAds.length === 0 && (
+              <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200">
+                <Megaphone className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-xs font-serif text-slate-500 italic">No homepage ads created yet. Set up promotional banners to showcase inaugurals or conferences.</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1900,6 +2146,45 @@ export default function AdminDashboard({
 
                 {/* Blocks List */}
                 <div className="space-y-4">
+                  {cmsPage.blocks.length > 0 && (
+                    <div className="bg-slate-100 border border-slate-200 p-3 rounded-lg flex items-center justify-between gap-4 text-xs font-sans">
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="checkbox" 
+                          id="selectAllCmsBlocks"
+                          checked={selectedCmsBlockIds.length === cmsPage.blocks.length && cmsPage.blocks.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCmsBlockIds(cmsPage.blocks.map(b => b.id));
+                            } else {
+                              setSelectedCmsBlockIds([]);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                        />
+                        <label htmlFor="selectAllCmsBlocks" className="font-semibold text-slate-700 cursor-pointer select-none">
+                          Select All ({cmsPage.blocks.length} blocks)
+                        </label>
+                      </div>
+
+                      {selectedCmsBlockIds.length > 0 && (
+                        <div className="flex items-center gap-3 animate-fade-in">
+                          <span className="font-medium text-slate-600 font-mono">
+                            {selectedCmsBlockIds.length} block{selectedCmsBlockIds.length > 1 ? 's' : ''} selected
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleDeleteMultipleCmsBlocks}
+                            className="cursor-pointer bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-bold px-3 py-1.5 rounded-lg text-xs font-sans flex items-center space-x-1.5 transition"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Remove Selected Blocks</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {cmsPage.blocks.length === 0 ? (
                     <div className="py-12 border border-dashed border-slate-200 text-center text-slate-400">
                       <Sparkles className="h-8 w-8 mx-auto mb-2 text-slate-300 animate-pulse" />
@@ -1909,9 +2194,23 @@ export default function AdminDashboard({
                     cmsPage.blocks.map((block, index) => (
                       <div key={block.id} className="border border-slate-200 p-4 rounded-xl bg-slate-50 space-y-4 relative">
                         <div className="flex justify-between items-center border-b border-rose-50 pb-2">
-                          <span className="font-mono font-bold text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded uppercase">
-                            Block {index + 1}: {block.type} section
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedCmsBlockIds.includes(block.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedCmsBlockIds(prev => [...prev, block.id]);
+                                } else {
+                                  setSelectedCmsBlockIds(prev => prev.filter(id => id !== block.id));
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer shrink-0"
+                            />
+                            <span className="font-mono font-bold text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded uppercase">
+                              Block {index + 1}: {block.type} section
+                            </span>
+                          </div>
                           <div className="flex items-center space-x-1">
                             <button
                               type="button"
@@ -2508,7 +2807,7 @@ export default function AdminDashboard({
             {/* Modal Header */}
             <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
               <h4 className="font-serif font-bold text-slate-900 text-lg">
-                {editItem ? "Modify Academic Record" : `Add New ${modalType === 'pub' ? 'Publication' : modalType === 'proj' ? 'Research Study' : modalType === 'blog' ? 'Blog Post' : 'Gallery Asset'}`}
+                {editItem ? "Modify Record" : `Add New ${modalType === 'pub' ? 'Publication' : modalType === 'proj' ? 'Research Study' : modalType === 'blog' ? 'Blog Post' : modalType === 'ad' ? 'Homepage Ad' : 'Gallery Asset'}`}
               </h4>
               <button 
                 onClick={() => setIsModalOpen(false)}
@@ -2802,6 +3101,64 @@ export default function AdminDashboard({
                       <option value="Conferences">Conferences</option>
                       <option value="Fieldwork">Fieldwork</option>
                     </select>
+                  </div>
+                </div>
+              )}
+
+              {/* SPECIAL FORM: HOMEPAGE AD */}
+              {modalType === 'ad' && (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Ad Banner Title *</label>
+                    <input 
+                      id="ad_title"
+                      type="text" required value={adForm.title} onChange={e => setAdForm({...adForm, title: e.target.value})}
+                      placeholder="e.g. 137th Inaugural Lecture of the University of Uyo"
+                      className="w-full px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Promo Image URL *</label>
+                      <input 
+                        id="ad_img_url"
+                        type="url" required value={adForm.imageUrl} onChange={e => setAdForm({...adForm, imageUrl: e.target.value})}
+                        className="w-full px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase text-slate-500 font-mono">Target Program Link URL</label>
+                      <input 
+                        id="ad_link_url"
+                        type="url" value={adForm.linkUrl} onChange={e => setAdForm({...adForm, linkUrl: e.target.value})}
+                        placeholder="e.g. https://okorie.edu.ng/inaugural-lecture"
+                        className="w-full px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-slate-500 font-mono font-bold">Brief Description / Promo Callout *</label>
+                    <textarea 
+                      id="ad_description"
+                      rows={3} required value={adForm.description} onChange={e => setAdForm({...adForm, description: e.target.value})}
+                      placeholder="Detailed schedule, speaker bio hook, and invitation details..."
+                      className="w-full px-3 py-2 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-amber-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-2 pt-2">
+                    <input 
+                      type="checkbox" 
+                      id="ad_is_active"
+                      checked={adForm.isActive}
+                      onChange={e => setAdForm({...adForm, isActive: e.target.checked})}
+                      className="h-4 w-4 text-amber-500 focus:ring-amber-400 border-gray-300 rounded cursor-pointer"
+                    />
+                    <label htmlFor="ad_is_active" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                      Publish Immediately (Show on Homepage)
+                    </label>
                   </div>
                 </div>
               )}

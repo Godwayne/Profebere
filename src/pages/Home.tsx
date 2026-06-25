@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, GraduationCap, Award, FileText, ArrowRight, MapPin, Mail, ChevronRight, Sparkles, Heart } from 'lucide-react';
-import { BlogPost, Publication, CMSPage } from '../types';
-import { fetchCMSPage } from '../services/db';
+import { BookOpen, GraduationCap, Award, FileText, ArrowRight, MapPin, Mail, ChevronRight, Sparkles, Heart, X, Megaphone, ExternalLink } from 'lucide-react';
+import { BlogPost, Publication, CMSPage, HomepageAd } from '../types';
+import { fetchCMSPage, fetchHomepageAds } from '../services/db';
 // Direct high-resolution image URL from the requested Imgur link (https://imgur.com/a/hb4YVIM)
 const profProfileImg = "https://i.imgur.com/uYvEwbo.jpeg";
 
@@ -13,6 +13,9 @@ interface HomeProps {
 
 export default function Home({ onNavigate, latestBlogPosts, recentPublications }: HomeProps) {
   const [cmsPage, setCmsPage] = useState<CMSPage | null>(null);
+  const [homepageAds, setHomepageAds] = useState<HomepageAd[]>([]);
+  const [dismissedAdIds, setDismissedAdIds] = useState<string[]>([]);
+  const [selectedAdFlyer, setSelectedAdFlyer] = useState<string | null>(null);
 
   useEffect(() => {
     const loadCms = async () => {
@@ -25,49 +28,97 @@ export default function Home({ onNavigate, latestBlogPosts, recentPublications }
         console.error("Error loading home page CMS content:", e);
       }
     };
+    
+    const loadAds = async () => {
+      try {
+        const ads = await fetchHomepageAds();
+        setHomepageAds(ads);
+      } catch (e) {
+        console.error("Error loading homepage ads:", e);
+      }
+    };
+
     loadCms();
+    loadAds();
   }, []);
 
   return (
     <div className="space-y-16 py-4 animate-fade-in text-navy">
       
-      {/* CMS Page Blocks Rendering if present */}
-      {cmsPage && cmsPage.blocks && cmsPage.blocks.length > 0 && (
-        <section id="cms_home_blocks" className="space-y-8 animate-fade-in bg-amber-500/5 border border-amber-500/10 p-6 md:p-8 rounded-xl text-left">
-          <div className="flex items-center space-x-2 border-b border-navy/10 pb-2">
-            <Sparkles className="h-5 w-5 text-amber-600 animate-pulse" />
-            <h2 className="font-serif font-bold text-lg uppercase tracking-tight text-navy">
-              Academic Bulletins & Section Updates (CMS)
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6 pt-2">
-            {cmsPage.blocks.map((block) => (
-              <div 
-                key={block.id} 
-                className={`p-6 border transition hover:shadow-md rounded text-left ${
-                  block.type === 'hero' 
-                    ? 'bg-navy text-white border-gold/20 col-span-full' 
-                    : block.type === 'cta'
-                    ? 'bg-amber-50 border-amber-200' 
-                    : 'bg-white border-navy/10'
-                }`}
-              >
-                {block.subheading && (
-                  <span className="text-[9px] uppercase font-mono font-bold tracking-widest text-amber-600 block mb-1">
-                    {block.subheading}
-                  </span>
-                )}
-                <h3 className="font-serif font-bold text-lg text-navy mb-2 border-b border-navy/5 pb-1">
-                  {block.heading}
-                </h3>
-                <p className="text-xs text-navy/85 whitespace-pre-line leading-relaxed font-sans">
-                  {block.content}
+      {/* Homepage Ads Section */}
+      {homepageAds
+        .filter(ad => ad.isActive && !dismissedAdIds.includes(ad.id))
+        .map(ad => (
+          <div 
+            key={ad.id} 
+            className="relative bg-gradient-to-r from-[#fdfcf9] to-[#f5f1e6] border-2 border-gold p-6 md:p-8 shadow-lg overflow-hidden flex flex-col md:flex-row gap-6 md:gap-8 items-center text-left transition duration-300"
+          >
+            {/* Top gold line accent */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gold" />
+            
+            {/* Image side */}
+            <div className="w-full md:w-1/3 shrink-0 relative aspect-video md:aspect-[4/3] bg-navy/5 overflow-hidden border border-navy/10">
+              <img 
+                src={ad.imageUrl} 
+                alt={ad.title} 
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-500"
+              />
+              <div className="absolute top-2 left-2 bg-navy text-gold font-mono text-[9px] uppercase px-2 py-0.5 font-bold border border-gold/40 flex items-center gap-1 shadow-md">
+                <Megaphone className="h-3 w-3 animate-bounce" />
+                <span>Special Announcement</span>
+              </div>
+            </div>
+
+            {/* Content side */}
+            <div className="flex-1 space-y-4">
+              <div className="space-y-2">
+                <span className="font-mono text-[10px] uppercase font-bold text-amber-700 tracking-wider">Academic Promotion Portal</span>
+                <h2 className="font-serif font-bold text-navy text-xl sm:text-2xl uppercase tracking-tight leading-snug">
+                  {ad.title}
+                </h2>
+                <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
+                  {ad.description}
                 </p>
               </div>
-            ))}
+
+              <div className="flex flex-wrap gap-3 pt-1">
+                <button 
+                  onClick={() => {
+                    if (ad.linkUrl.startsWith('/') || ad.linkUrl.includes('faculty_prof_ebere')) {
+                      setSelectedAdFlyer(ad.imageUrl);
+                    } else if (ad.linkUrl) {
+                      window.open(ad.linkUrl, '_blank');
+                    } else {
+                      setSelectedAdFlyer(ad.imageUrl);
+                    }
+                  }}
+                  className="cursor-pointer inline-flex items-center gap-2 bg-navy text-gold hover:bg-gold hover:text-navy px-4 py-2.5 font-mono text-[10px] uppercase font-bold transition shadow-xs"
+                >
+                  <span>Attend Lecture / View Program</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+                
+                <button 
+                  onClick={() => onNavigate('blog')}
+                  className="cursor-pointer inline-flex items-center gap-2 border border-navy/20 bg-white hover:bg-[#fbf9f4] text-navy px-4 py-2.5 font-mono text-[10px] uppercase font-bold transition"
+                >
+                  <span>Read News Coverage</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Dismiss Button */}
+            <button 
+              onClick={() => setDismissedAdIds([...dismissedAdIds, ad.id])}
+              className="absolute top-3 right-3 text-navy/40 hover:text-navy p-1 transition cursor-pointer hover:bg-navy/5"
+              title="Dismiss announcement"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-        </section>
-      )}
+        ))}
 
       {/* Hero Section */}
       <section id="academic_hero" className="relative bg-navy text-[#fdfcf9] rounded-none overflow-hidden border border-gold/15 shadow-xl mr-1">
@@ -370,6 +421,54 @@ export default function Home({ onNavigate, latestBlogPosts, recentPublications }
           </div>
         </section>
       </div>
+
+      {/* Lightbox / Flyer Modal Overlay */}
+      {selectedAdFlyer && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4 md:p-8"
+          onClick={() => setSelectedAdFlyer(null)}
+        >
+          {/* Top Control Bar */}
+          <div className="w-full max-w-4xl flex justify-between items-center text-white mb-3">
+            <span className="font-mono text-xs uppercase tracking-wider text-gold font-bold">137th Inaugural Lecture Official Brochure</span>
+            <div className="flex gap-4">
+              <a 
+                href={selectedAdFlyer} 
+                download="137th-Inaugural-Lecture-Flyer.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="bg-navy hover:bg-gold text-gold hover:text-navy px-3.5 py-1.5 font-mono text-[10px] uppercase font-bold transition flex items-center gap-1 border border-gold/30"
+              >
+                Open Full Size
+              </a>
+              <button 
+                onClick={() => setSelectedAdFlyer(null)}
+                className="text-white/80 hover:text-white p-1 hover:bg-white/10 transition cursor-pointer"
+                title="Close"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* High-res image container */}
+          <div 
+            className="relative max-w-4xl max-h-[85vh] w-full flex justify-center bg-zinc-950 border border-white/10 shadow-2xl overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img 
+              src={selectedAdFlyer} 
+              alt="Program brochure" 
+              referrerPolicy="no-referrer"
+              className="w-full max-h-[85vh] object-contain cursor-zoom-in"
+              onClick={() => window.open(selectedAdFlyer, '_blank')}
+            />
+          </div>
+          
+          <p className="text-white/40 text-[10px] font-mono mt-2 uppercase tracking-wide">Tip: Click on the flyer image to open in full screen zoom in a new tab</p>
+        </div>
+      )}
     </div>
   );
 }

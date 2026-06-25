@@ -1,20 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../components/AuthContext';
-import { Publication, Transaction, Comment, FavoriteItem } from '../types';
-import { fetchUserTransactions, fetchAllComments, fetchPublications, fetchUserFavorites, removeFavorite } from '../services/db';
+import { Publication, Transaction, Comment, FavoriteItem, BlogPost } from '../types';
+import { fetchUserTransactions, fetchAllComments, fetchPublications, fetchUserFavorites, removeFavorite, updateUserProfile, fetchBlogPosts } from '../services/db';
 import { 
   User as UserIcon, BookOpen, Heart, MessageSquare, CreditCard, 
-  Download, ArrowRight, Calendar, Bookmark, CheckCircle2, AlertTriangle, ExternalLink
+  Download, ArrowRight, Calendar, Bookmark, CheckCircle2, AlertTriangle, ExternalLink,
+  Newspaper, Sparkles, Book, Info
 } from 'lucide-react';
 
 export default function UserDashboard() {
-  const { profile, logout } = useAuth();
+  const { profile, logout, refreshProfile } = useAuth();
   const [publications, setPublications] = useState<Publication[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'downloads' | 'likes' | 'comments' | 'ledger'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'downloads' | 'likes' | 'comments' | 'ledger' | 'profile'>('overview');
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState({
+    displayName: '',
+    schoolName: '',
+    faculty: '',
+    department: '',
+    regNumber: '',
+    phoneNumber: '',
+    country: '',
+    state: ''
+  });
+
+  useEffect(() => {
+    if (profile) {
+      setProfileForm({
+        displayName: profile.displayName || '',
+        schoolName: profile.schoolName || '',
+        faculty: profile.faculty || '',
+        department: profile.department || '',
+        regNumber: profile.regNumber || '',
+        phoneNumber: profile.phoneNumber || '',
+        country: profile.country || '',
+        state: profile.state || ''
+      });
+    }
+  }, [profile]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+    setSavingProfile(true);
+    setProfileSuccess('');
+    try {
+      const updatedProfile = {
+        ...profile,
+        displayName: profileForm.displayName,
+        schoolName: profileForm.schoolName,
+        faculty: profileForm.faculty,
+        department: profileForm.department,
+        regNumber: profileForm.regNumber,
+        phoneNumber: profileForm.phoneNumber,
+        country: profileForm.country,
+        state: profileForm.state
+      };
+      await updateUserProfile(updatedProfile);
+      await refreshProfile();
+      setProfileSuccess('Academic profile updated successfully!');
+      setIsEditing(false);
+      setTimeout(() => setProfileSuccess(''), 3000);
+    } catch (err) {
+      console.error("Profile update failed", err);
+      window.alert("Failed to update profile. Please try again.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [viewingPub, setViewingPub] = useState<Publication | null>(null);
@@ -22,16 +84,18 @@ export default function UserDashboard() {
   const loadDashboardData = async () => {
     if (!profile) return;
     try {
-      const [allPubs, userTxns, allComments, userFavs] = await Promise.all([
+      const [allPubs, userTxns, allComments, userFavs, allBlogs] = await Promise.all([
         fetchPublications(),
         fetchUserTransactions(profile.uid),
         fetchAllComments(),
-        fetchUserFavorites(profile.uid)
+        fetchUserFavorites(profile.uid),
+        fetchBlogPosts()
       ]);
 
       setPublications(allPubs);
       setTransactions(userTxns || []);
       setFavorites(userFavs || []);
+      setBlogPosts(allBlogs || []);
       
       // Filter user comments
       const userComments = allComments.filter(c => c.userId === profile.uid);
@@ -188,6 +252,18 @@ export default function UserDashboard() {
               </span>
               <ArrowRight className="h-3 w-3" />
             </button>
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`cursor-pointer w-full text-left px-4 py-3 font-mono text-xs uppercase tracking-wider flex items-center justify-between transition ${
+                activeTab === 'profile' ? 'bg-navy text-gold font-bold' : 'bg-white border border-navy/5 text-navy/70 hover:bg-[#fbf9f4]'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <UserIcon className="h-4 w-4" />
+                <span>Scholar Profile</span>
+              </span>
+              <ArrowRight className="h-3 w-3" />
+            </button>
           </div>
 
           {/* Right Console Grid panels */}
@@ -221,18 +297,288 @@ export default function UserDashboard() {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-navy/5 space-y-4">
-                  <h4 className="font-serif font-bold text-sm text-navy uppercase mb-2">Core Registry Bounds</h4>
-                  <div className="grid sm:grid-cols-2 gap-4 text-xs">
-                    <div className="p-3 bg-[#fdfcf9] border border-navy/5">
-                      <span className="text-[10px] uppercase text-slate-500 block font-mono">User ID Key</span>
-                      <span className="font-mono text-[10px] text-navy block mt-1 truncate">{profile.uid}</span>
+                {/* HOME AT A GLANCE PORTAL FEED */}
+                <div className="border-t border-navy/5 pt-6 space-y-6">
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="h-5 w-5 text-gold" />
+                    <h4 className="font-serif font-bold text-base text-navy uppercase tracking-tight">Home At A Glance</h4>
+                  </div>
+                  
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* news feed / chronicles */}
+                    <div className="bg-[#fdfcf9] border border-navy/5 p-5 space-y-4 rounded-xs">
+                      <div className="flex items-center justify-between border-b border-navy/5 pb-2">
+                        <span className="font-serif font-bold text-xs text-navy uppercase tracking-wider flex items-center gap-1.5">
+                          <Newspaper className="h-4 w-4 text-gold" />
+                          <span>Latest Portal Chronicles</span>
+                        </span>
+                        <span className="font-mono text-[9px] text-navy/40 font-bold">News & Announcements</span>
+                      </div>
+                      
+                      {blogPosts.length === 0 ? (
+                        <div className="text-center py-6 text-xs text-navy/50 font-mono">No chronicles have been published yet.</div>
+                      ) : (
+                        <div className="space-y-4">
+                          {blogPosts.slice(0, 2).map(post => (
+                            <div key={post.id} className="group space-y-2 text-left">
+                              <div className="flex items-center gap-2 text-[9px] font-mono text-navy/40 font-bold uppercase">
+                                <span className="text-amber-700">{post.category}</span>
+                                <span>&bull;</span>
+                                <span>{post.date}</span>
+                              </div>
+                              <h5 className="font-serif font-bold text-navy text-xs group-hover:text-amber-700 transition line-clamp-1">{post.title}</h5>
+                              <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">{post.excerpt}</p>
+                              <button 
+                                onClick={() => setSelectedPost(post)}
+                                className="cursor-pointer text-[9px] font-mono font-bold text-navy/80 hover:text-navy hover:underline flex items-center gap-1 uppercase"
+                              >
+                                <span>Read announcement</span>
+                                <ArrowRight className="h-2.5 w-2.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="p-3 bg-[#fdfcf9] border border-navy/5">
-                      <span className="text-[10px] uppercase text-slate-500 block font-mono">E-Mail Endpoint</span>
-                      <span className="font-medium text-navy block mt-1 truncate">{profile.email}</span>
+
+                    {/* recent library monographs */}
+                    <div className="bg-[#fdfcf9] border border-navy/5 p-5 space-y-4 rounded-xs">
+                      <div className="flex items-center justify-between border-b border-navy/5 pb-2">
+                        <span className="font-serif font-bold text-xs text-navy uppercase tracking-wider flex items-center gap-1.5">
+                          <Book className="h-4 w-4 text-gold" />
+                          <span>Suggested Studies</span>
+                        </span>
+                        <span className="font-mono text-[9px] text-navy/40 font-bold">New Publications</span>
+                      </div>
+
+                      {publications.length === 0 ? (
+                        <div className="text-center py-6 text-xs text-navy/50 font-mono">No publications available in library catalog.</div>
+                      ) : (
+                        <div className="space-y-4">
+                          {publications.slice(0, 2).map(pub => (
+                            <div key={pub.id} className="space-y-1.5 text-left">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-mono font-bold uppercase bg-navy/5 text-navy/60 px-1.5 py-0.5 rounded-none">
+                                  {pub.type}
+                                </span>
+                                <span className="font-mono text-[9px] font-bold text-amber-700">
+                                  {pub.isPaid ? `₦${pub.price?.toLocaleString()}` : 'Free Access'}
+                                </span>
+                              </div>
+                              <h5 className="font-serif font-bold text-navy text-xs line-clamp-1" title={pub.title}>{pub.title}</h5>
+                              <p className="text-[10px] text-slate-400 font-medium truncate">{pub.authors} ({pub.year})</p>
+                              <button 
+                                onClick={() => setActiveTab('downloads')}
+                                className="cursor-pointer text-[9px] font-mono font-bold text-navy/80 hover:text-navy hover:underline flex items-center gap-1 uppercase"
+                              >
+                                <span>Access in library</span>
+                                <ArrowRight className="h-2.5 w-2.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* PROFILE PANEL */}
+            {activeTab === 'profile' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-navy uppercase tracking-tight mb-1">Scholar Profile Matrix</h3>
+                  <p className="text-slate-500 text-xs">Manage your academic identity, institution details, and account configuration parameters.</p>
+                </div>
+
+                <div className="pt-6 border-t border-navy/5 space-y-6">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-serif font-bold text-sm text-navy uppercase">Academic Institution Details</h4>
+                      <p className="text-slate-500 text-[11px] mt-0.5">Please provide your school, faculty, department, registration number, and location parameters.</p>
+                    </div>
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="cursor-pointer bg-white hover:bg-[#fbf9f4] border border-navy/20 px-3 py-1 text-xs uppercase font-mono font-bold text-navy transition"
+                      >
+                        Edit Profile
+                      </button>
+                    )}
+                  </div>
+
+                  {profileSuccess && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium rounded flex items-center space-x-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>{profileSuccess}</span>
+                    </div>
+                  )}
+
+                  {isEditing ? (
+                    <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs">
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Full Name</label>
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.displayName}
+                            onChange={e => setProfileForm({ ...profileForm, displayName: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. John Doe"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Name of School</label>
+                          <input
+                            type="text"
+                            value={profileForm.schoolName}
+                            onChange={e => setProfileForm({ ...profileForm, schoolName: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. University of Uyo"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Faculty</label>
+                          <input
+                            type="text"
+                            value={profileForm.faculty}
+                            onChange={e => setProfileForm({ ...profileForm, faculty: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. Social Sciences"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Department</label>
+                          <input
+                            type="text"
+                            value={profileForm.department}
+                            onChange={e => setProfileForm({ ...profileForm, department: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. Sociology and Anthropology"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Registration Number</label>
+                          <input
+                            type="text"
+                            value={profileForm.regNumber}
+                            onChange={e => setProfileForm({ ...profileForm, regNumber: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g.UU/19/SS/SOC/001"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Phone Number</label>
+                          <input
+                            type="tel"
+                            value={profileForm.phoneNumber}
+                            onChange={e => setProfileForm({ ...profileForm, phoneNumber: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. +234 800 000 0000"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">Country</label>
+                          <input
+                            type="text"
+                            value={profileForm.country}
+                            onChange={e => setProfileForm({ ...profileForm, country: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. Nigeria"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-600 font-mono text-[10px] uppercase font-bold">State</label>
+                          <input
+                            type="text"
+                            value={profileForm.state}
+                            onChange={e => setProfileForm({ ...profileForm, state: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 focus:border-amber-500 focus:outline-none bg-white text-navy font-sans"
+                            placeholder="e.g. Akwa Ibom"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-3 pt-2">
+                        <button
+                          type="submit"
+                          disabled={savingProfile}
+                          className="cursor-pointer bg-navy text-white hover:bg-gold hover:text-navy px-4 py-2 font-mono uppercase text-[10px] font-bold transition disabled:opacity-50"
+                        >
+                          {savingProfile ? 'Saving...' : 'Save Profile'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(false)}
+                          className="cursor-pointer border border-navy/20 text-navy hover:bg-[#fbf9f4] px-4 py-2 font-mono uppercase text-[10px] font-bold transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid sm:grid-cols-2 gap-4 text-xs">
+                        <div className="p-3 bg-[#fdfcf9] border border-navy/5 flex flex-col justify-between">
+                          <span className="text-[9px] uppercase text-slate-400 font-mono font-bold tracking-wider">Name of School</span>
+                          <span className="font-medium text-navy block mt-1">
+                            {profile.schoolName || <span className="italic text-slate-400">Not Provided</span>}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-[#fdfcf9] border border-navy/5 flex flex-col justify-between">
+                          <span className="text-[9px] uppercase text-slate-400 font-mono font-bold tracking-wider">Faculty</span>
+                          <span className="font-medium text-navy block mt-1">
+                            {profile.faculty || <span className="italic text-slate-400">Not Provided</span>}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-[#fdfcf9] border border-navy/5 flex flex-col justify-between">
+                          <span className="text-[9px] uppercase text-slate-400 font-mono font-bold tracking-wider">Department</span>
+                          <span className="font-medium text-navy block mt-1">
+                            {profile.department || <span className="italic text-slate-400">Not Provided</span>}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-[#fdfcf9] border border-navy/5 flex flex-col justify-between">
+                          <span className="text-[9px] uppercase text-slate-400 font-mono font-bold tracking-wider">Registration Number</span>
+                          <span className="font-mono text-navy block mt-1">
+                            {profile.regNumber || <span className="italic text-slate-400">Not Provided</span>}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-[#fdfcf9] border border-[#002147]/5 flex flex-col justify-between">
+                          <span className="text-[9px] uppercase text-slate-400 font-mono font-bold tracking-wider">Phone Number</span>
+                          <span className="font-medium text-[#002147] block mt-1">
+                            {profile.phoneNumber || <span className="italic text-slate-400">Not Provided</span>}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-[#fdfcf9] border border-[#002147]/5 flex flex-col justify-between">
+                          <span className="text-[9px] uppercase text-slate-400 font-mono font-bold tracking-wider">Country &amp; State</span>
+                          <span className="font-medium text-[#002147] block mt-1">
+                            {profile.country || profile.state ? (
+                              <span>
+                                {profile.state ? `${profile.state}, ` : ''}
+                                {profile.country || ''}
+                              </span>
+                            ) : (
+                              <span className="italic text-slate-400">Not Provided</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-4 text-xs pt-2">
+                        <div className="p-3 bg-slate-50 border border-slate-200">
+                          <span className="text-[9px] uppercase text-slate-400 block font-mono font-bold">User ID Key</span>
+                          <span className="font-mono text-[10px] text-slate-500 block mt-1 truncate select-all">{profile.uid}</span>
+                        </div>
+                        <div className="p-3 bg-slate-50 border border-slate-200">
+                          <span className="text-[9px] uppercase text-slate-400 block font-mono font-bold">E-Mail Endpoint</span>
+                          <span className="font-medium text-slate-500 block mt-1 truncate">{profile.email}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -545,6 +891,55 @@ export default function UserDashboard() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* CHRONICLE ANNOUNCEMENT VIEWER MODAL */}
+      {selectedPost && (
+        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 text-left">
+          <div className="bg-[#fdfcf9] border border-navy/20 shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col relative animate-slide-up">
+            <div className="absolute top-0 inset-x-0 h-[4px] bg-gold" />
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-navy/10 flex justify-between items-start gap-4">
+              <div>
+                <span className="font-mono text-[9px] uppercase tracking-widest text-gold block font-bold">{selectedPost.category} &bull; Announcement</span>
+                <h3 className="font-serif font-bold text-lg text-navy uppercase leading-snug mt-1">{selectedPost.title}</h3>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Published on: {selectedPost.date}</p>
+              </div>
+              <button
+                onClick={() => setSelectedPost(null)}
+                className="cursor-pointer font-mono text-xs uppercase font-bold text-navy hover:text-gold px-2.5 py-1 border border-navy/20"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-grow p-6 overflow-y-auto space-y-4 font-serif leading-relaxed text-navy">
+              {selectedPost.imageUrl && (
+                <div className="aspect-video relative overflow-hidden bg-slate-100 border border-navy/10 mb-2">
+                  <img src={selectedPost.imageUrl} alt={selectedPost.title} referrerPolicy="no-referrer" className="object-cover w-full h-full" />
+                </div>
+              )}
+              <p className="font-sans text-xs font-semibold text-slate-700 bg-navy/[0.02] p-3 border-l-2 border-gold italic">
+                "{selectedPost.excerpt}"
+              </p>
+              <div className="text-xs text-slate-800 font-sans space-y-3 leading-relaxed whitespace-pre-wrap">
+                {selectedPost.content}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-[#f0ece3] border-t border-navy/10 flex justify-end">
+              <button
+                onClick={() => setSelectedPost(null)}
+                className="cursor-pointer bg-navy text-gold hover:text-navy hover:bg-gold px-4 py-2 font-mono uppercase text-[10px] font-bold"
+              >
+                Got It
+              </button>
+            </div>
           </div>
         </div>
       )}

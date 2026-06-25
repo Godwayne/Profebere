@@ -16,7 +16,7 @@ import { db } from '../firebase';
 import { 
   Publication, BlogPost, Project, GalleryImage, ContactMessage,
   UserProfile, Transaction, Comment, DonationSettings, PaymentKeys, FavoriteItem, CMSPage, AdminSimCredentials,
-  LiveChatMessage, ChatConfig
+  LiveChatMessage, ChatConfig, HomepageAd
 } from '../types';
 import { sendEmailNotification } from './mail';
 
@@ -111,6 +111,15 @@ const DEFAULT_PROJECTS: Project[] = [
 
 const DEFAULT_BLOG_POSTS: BlogPost[] = [
   {
+    id: 'blog_inaugural',
+    title: 'Announcing the 137th Inaugural Lecture: A Call for Juvenile Correctional Paradigm Shift',
+    content: 'We are pleased to invite the academic community, student scholars, and the general public to the prestigious 137th Inaugural Lecture of the University of Uyo, to be delivered by our distinguished Professor of Sociology and Anthropology, Prof. Ebere James Okorie. The lecture is titled "Social Structures and Cognitive-Educational Re-orientation: Juvenile Correctional Paradigm Shift". Venue: 1000-Seater Auditorium, Main Campus, University of Uyo. Date: July 9th, 2026. Time: 2:00 PM Prompt.',
+    excerpt: 'Prof. Ebere James Okorie presents the 137th Inaugural Lecture at the University of Uyo, detailing critical social structural transitions.',
+    date: '2026-06-25',
+    category: 'Announcements',
+    imageUrl: 'https://i.imgur.com/uYvEwbo.jpeg'
+  },
+  {
     id: 'blog1',
     title: 'Prof. Ebere James Okorie Addresses Restorative Justice Reforms at Pan-African Criminology Conference',
     content: 'Prof. Ebere James Okorie of the Department of Sociology and Anthropology, University of Uyo, recently delivered a keynote keynote address at the African Faculty of Social Sciences assembly. He advocated for systemic transitions in juvenile custodial cells, emphasizing restorative training models over punitive isolation. "Our correctional administration must replace rigid confinement list positive re-education modules to secure Akwa Ibom youth," he declared, following his advisory appointment for South-South Custodial Support Advisory.',
@@ -195,6 +204,26 @@ const initLocalData = () => {
 
 initLocalData();
 
+export const getDeletedIds = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem('okorie_deleted_ids') || '[]');
+  } catch {
+    return [];
+  }
+};
+
+export const addDeletedId = (id: string) => {
+  try {
+    const ids = getDeletedIds();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      localStorage.setItem('okorie_deleted_ids', JSON.stringify(ids));
+    }
+  } catch (err) {
+    console.error("addDeletedId error", err);
+  }
+};
+
 // ==========================================
 // FIRESTORE SYNCING & FAILING GRACEFULLY
 // ==========================================
@@ -207,23 +236,26 @@ export const fetchPublications = async (): Promise<Publication[]> => {
       const title = doc.data().title || "";
       return title.includes("Intersection of Gender") || title.includes("Sociology of the Nigerian Family") || title.includes("Conflict Resolution among the Ibibio");
     });
-    if (snapshot.empty || hasOldData) {
+    if ((snapshot.empty && !localStorage.getItem('okorie_publications_seeded')) || hasOldData) {
       if (hasOldData) {
         console.log("Upgrading outdated publications schema in Firestore...");
         await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, 'publications', d.id))));
       }
       const seedPromises = DEFAULT_PUBLICATIONS.map(pub => {
         const { id, ...rest } = pub;
-        return addDoc(collection(db, 'publications'), rest);
+        return setDoc(doc(db, 'publications', id), rest);
       });
       await Promise.all(seedPromises);
       localStorage.setItem('okorie_publications', JSON.stringify(DEFAULT_PUBLICATIONS));
-      return DEFAULT_PUBLICATIONS;
+      localStorage.setItem('okorie_publications_seeded', 'true');
+      return DEFAULT_PUBLICATIONS.filter(item => !getDeletedIds().includes(item.id));
+    } else if (snapshot.empty) {
+      return [];
     }
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Publication));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Publication)).filter(item => !getDeletedIds().includes(item.id));
   } catch (error) {
     console.warn("Firestore fetchPublications failed, falling back to local storage:", error);
-    return JSON.parse(localStorage.getItem('okorie_publications') || '[]');
+    return (JSON.parse(localStorage.getItem('okorie_publications') || '[]') as Publication[]).filter(item => !getDeletedIds().includes(item.id));
   }
 };
 
@@ -268,12 +300,12 @@ export const updatePublication = async (pub: Publication): Promise<void> => {
 };
 
 export const deletePublication = async (id: string): Promise<void> => {
+  addDeletedId(id);
   try {
-    if (id.startsWith('local_')) {
-      throw new Error("Local item cannot be deleted from Firestore");
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'publications', id);
+      await deleteDoc(docRef);
     }
-    const docRef = doc(db, 'publications', id);
-    await deleteDoc(docRef);
     
     // Sync with local
     const local: Publication[] = JSON.parse(localStorage.getItem('okorie_publications') || '[]');
@@ -299,23 +331,26 @@ export const fetchProjects = async (): Promise<Project[]> => {
       const title = doc.data().title || "";
       return title.includes("Climate Adaptations") || title.includes("Indigenous Land");
     });
-    if (snapshot.empty || hasOldData) {
+    if ((snapshot.empty && !localStorage.getItem('okorie_projects_seeded')) || hasOldData) {
       if (hasOldData) {
         console.log("Upgrading outdated projects schema in Firestore...");
         await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, 'projects', d.id))));
       }
       const seedPromises = DEFAULT_PROJECTS.map(proj => {
         const { id, ...rest } = proj;
-        return addDoc(collection(db, 'projects'), rest);
+        return setDoc(doc(db, 'projects', id), rest);
       });
       await Promise.all(seedPromises);
       localStorage.setItem('okorie_projects', JSON.stringify(DEFAULT_PROJECTS));
-      return DEFAULT_PROJECTS;
+      localStorage.setItem('okorie_projects_seeded', 'true');
+      return DEFAULT_PROJECTS.filter(item => !getDeletedIds().includes(item.id));
+    } else if (snapshot.empty) {
+      return [];
     }
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)).filter(item => !getDeletedIds().includes(item.id));
   } catch (error) {
     console.warn("Firestore fetchProjects failed, falling back to local storage:", error);
-    return JSON.parse(localStorage.getItem('okorie_projects') || '[]');
+    return (JSON.parse(localStorage.getItem('okorie_projects') || '[]') as Project[]).filter(item => !getDeletedIds().includes(item.id));
   }
 };
 
@@ -355,16 +390,18 @@ export const updateProject = async (proj: Project): Promise<void> => {
 };
 
 export const deleteProject = async (id: string): Promise<void> => {
+  addDeletedId(id);
   try {
-    if (id.startsWith('local_')) throw new Error("Local item");
-    const docRef = doc(db, 'projects', id);
-    await deleteDoc(docRef);
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'projects', id);
+      await deleteDoc(docRef);
+    }
     
     const local: Project[] = JSON.parse(localStorage.getItem('okorie_projects') || '[]');
     const updated = local.filter(p => p.id !== id);
     localStorage.setItem('okorie_projects', JSON.stringify(updated));
   } catch (error) {
-    console.warn("Firestore deleteProject failed, performing local:", error);
+    console.warn("Firestore deleteProject failed, performing local operation:", error);
     const local: Project[] = JSON.parse(localStorage.getItem('okorie_projects') || '[]');
     const updated = local.filter(p => p.id !== id);
     localStorage.setItem('okorie_projects', JSON.stringify(updated));
@@ -383,23 +420,26 @@ export const fetchBlogPosts = async (): Promise<BlogPost[]> => {
       const title = doc.data().title || "";
       return title.includes("Gender Equity Council") || title.includes("Ibibio Traditional Council") || title.includes("Theory with Grassroots Realities");
     });
-    if (snapshot.empty || hasOldData) {
+    if ((snapshot.empty && !localStorage.getItem('okorie_blog_seeded')) || hasOldData) {
       if (hasOldData) {
         console.log("Upgrading outdated blog posts schema in Firestore...");
         await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, 'blog', d.id))));
       }
       const seedPromises = DEFAULT_BLOG_POSTS.map(post => {
         const { id, ...rest } = post;
-        return addDoc(collection(db, 'blog'), rest);
+        return setDoc(doc(db, 'blog', id), rest);
       });
       await Promise.all(seedPromises);
       localStorage.setItem('okorie_blog', JSON.stringify(DEFAULT_BLOG_POSTS));
-      return DEFAULT_BLOG_POSTS;
+      localStorage.setItem('okorie_blog_seeded', 'true');
+      return DEFAULT_BLOG_POSTS.filter(item => !getDeletedIds().includes(item.id));
+    } else if (snapshot.empty) {
+      return [];
     }
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost)).filter(item => !getDeletedIds().includes(item.id));
   } catch (error) {
     console.warn("Firestore fetchBlogPosts failed, falling back to local storage:", error);
-    return JSON.parse(localStorage.getItem('okorie_blog') || '[]');
+    return (JSON.parse(localStorage.getItem('okorie_blog') || '[]') as BlogPost[]).filter(item => !getDeletedIds().includes(item.id));
   }
 };
 
@@ -439,16 +479,18 @@ export const updateBlogPost = async (post: BlogPost): Promise<void> => {
 };
 
 export const deleteBlogPost = async (id: string): Promise<void> => {
+  addDeletedId(id);
   try {
-    if (id.startsWith('local_')) throw new Error("Local item");
-    const docRef = doc(db, 'blog', id);
-    await deleteDoc(docRef);
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'blog', id);
+      await deleteDoc(docRef);
+    }
     
     const local: BlogPost[] = JSON.parse(localStorage.getItem('okorie_blog') || '[]');
     const updated = local.filter(p => p.id !== id);
     localStorage.setItem('okorie_blog', JSON.stringify(updated));
   } catch (error) {
-    console.warn("Firestore deleteBlogPost failed, performing local:", error);
+    console.warn("Firestore deleteBlogPost failed, performing local operation:", error);
     const local: BlogPost[] = JSON.parse(localStorage.getItem('okorie_blog') || '[]');
     const updated = local.filter(p => p.id !== id);
     localStorage.setItem('okorie_blog', JSON.stringify(updated));
@@ -467,23 +509,26 @@ export const fetchGalleryImages = async (): Promise<GalleryImage[]> => {
       const caption = doc.data().caption || "";
       return caption.includes("Sociology of Development") || caption.includes("Ibibio traditions") || caption.includes("agricultural cooperative leaders");
     });
-    if (snapshot.empty || hasOldData) {
+    if ((snapshot.empty && !localStorage.getItem('okorie_gallery_seeded')) || hasOldData) {
       if (hasOldData) {
         console.log("Upgrading outdated gallery schema in Firestore...");
         await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, 'gallery', d.id))));
       }
       const seedPromises = DEFAULT_GALLERY_IMAGES.map(img => {
         const { id, ...rest } = img;
-        return addDoc(collection(db, 'gallery'), rest);
+        return setDoc(doc(db, 'gallery', id), rest);
       });
       await Promise.all(seedPromises);
       localStorage.setItem('okorie_gallery', JSON.stringify(DEFAULT_GALLERY_IMAGES));
-      return DEFAULT_GALLERY_IMAGES;
+      localStorage.setItem('okorie_gallery_seeded', 'true');
+      return DEFAULT_GALLERY_IMAGES.filter(item => !getDeletedIds().includes(item.id));
+    } else if (snapshot.empty) {
+      return [];
     }
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GalleryImage));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GalleryImage)).filter(item => !getDeletedIds().includes(item.id));
   } catch (error) {
     console.warn("Firestore fetchGalleryImages failed, falling back to local storage:", error);
-    return JSON.parse(localStorage.getItem('okorie_gallery') || '[]');
+    return (JSON.parse(localStorage.getItem('okorie_gallery') || '[]') as GalleryImage[]).filter(item => !getDeletedIds().includes(item.id));
   }
 };
 
@@ -505,16 +550,18 @@ export const addGalleryImage = async (img: Omit<GalleryImage, 'id'>): Promise<Ga
 };
 
 export const deleteGalleryImage = async (id: string): Promise<void> => {
+  addDeletedId(id);
   try {
-    if (id.startsWith('local_')) throw new Error("Local item");
-    const docRef = doc(db, 'gallery', id);
-    await deleteDoc(docRef);
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'gallery', id);
+      await deleteDoc(docRef);
+    }
     
     const local: GalleryImage[] = JSON.parse(localStorage.getItem('okorie_gallery') || '[]');
     const updated = local.filter(p => p.id !== id);
     localStorage.setItem('okorie_gallery', JSON.stringify(updated));
   } catch (error) {
-    console.warn("Firestore deleteGalleryImage failed, performing local:", error);
+    console.warn("Firestore deleteGalleryImage failed, performing local operation:", error);
     const local: GalleryImage[] = JSON.parse(localStorage.getItem('okorie_gallery') || '[]');
     const updated = local.filter(p => p.id !== id);
     localStorage.setItem('okorie_gallery', JSON.stringify(updated));
@@ -1222,4 +1269,167 @@ export const subscribeToChatMessages = (callback: (messages: LiveChatMessage[]) 
     console.warn("Firestore subscription failed to initialize:", err);
   }
   return () => {};
+};
+
+// ==========================================
+// HOMEPAGE ADS MANAGEMENT
+// ==========================================
+
+const DEFAULT_HOMEPAGE_ADS: HomepageAd[] = [
+  {
+    id: 'ad_inaugural',
+    title: '137th Inaugural Lecture: Institutional Corruption in Nigeria',
+    imageUrl: 'https://i.imgur.com/uYvEwbo.jpeg',
+    linkUrl: '/src/assets/images/faculty_prof_ebere_1781985440905.jpg',
+    description: 'Delivered by Professor Ebere J. Okorie (Professor of Criminology). Topic: "Institutional Corruption in Nigeria: Diagnosis, Lessons and the Way Forward". Date: Thursday, 9th July 2026 at 3:00pm. Venue: 1000 Seater TETFUND Auditorium, Main Campus, Nwaniba Road, Uyo. All are cordially invited.',
+    isActive: true,
+    dateCreated: '2026-06-25'
+  }
+];
+
+export const fetchHomepageAds = async (): Promise<HomepageAd[]> => {
+  try {
+    const q = query(collection(db, 'homepage_ads'), orderBy('dateCreated', 'desc'));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty && !localStorage.getItem('okorie_ads_seeded')) {
+      const seedPromises = DEFAULT_HOMEPAGE_ADS.map(ad => {
+        const { id, ...rest } = ad;
+        return setDoc(doc(db, 'homepage_ads', id), rest);
+      });
+      await Promise.all(seedPromises);
+      localStorage.setItem('okorie_ads', JSON.stringify(DEFAULT_HOMEPAGE_ADS));
+      localStorage.setItem('okorie_ads_seeded', 'true');
+      return DEFAULT_HOMEPAGE_ADS.filter(item => !getDeletedIds().includes(item.id));
+    } else if (snapshot.empty) {
+      return [];
+    }
+
+    const fetchedAds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HomepageAd));
+
+    // Self-healing / Auto-update: Check if the inaugural ad has different details and update it in Firestore
+    let changed = false;
+    const updatedAds = await Promise.all(fetchedAds.map(async (ad) => {
+      if (ad.id === 'ad_inaugural' && (ad.imageUrl !== DEFAULT_HOMEPAGE_ADS[0].imageUrl || ad.title !== DEFAULT_HOMEPAGE_ADS[0].title || ad.linkUrl !== DEFAULT_HOMEPAGE_ADS[0].linkUrl)) {
+        const updatedAd = {
+          ...ad,
+          title: DEFAULT_HOMEPAGE_ADS[0].title,
+          imageUrl: DEFAULT_HOMEPAGE_ADS[0].imageUrl,
+          linkUrl: DEFAULT_HOMEPAGE_ADS[0].linkUrl,
+          description: DEFAULT_HOMEPAGE_ADS[0].description
+        };
+        try {
+          const { id, ...rest } = updatedAd;
+          await setDoc(doc(db, 'homepage_ads', 'ad_inaugural'), rest);
+          changed = true;
+        } catch (e) {
+          console.warn("Failed to auto-update ad_inaugural in Firestore:", e);
+        }
+        return updatedAd;
+      }
+      return ad;
+    }));
+
+    if (changed) {
+      localStorage.setItem('okorie_ads', JSON.stringify(updatedAds));
+    }
+
+    return updatedAds.filter(item => !getDeletedIds().includes(item.id));
+  } catch (error) {
+    console.warn("Firestore fetchHomepageAds failed, falling back to local storage:", error);
+    const local = localStorage.getItem('okorie_ads');
+    if (!local) {
+      localStorage.setItem('okorie_ads', JSON.stringify(DEFAULT_HOMEPAGE_ADS));
+      return DEFAULT_HOMEPAGE_ADS.filter(item => !getDeletedIds().includes(item.id));
+    }
+
+    // Also perform self-healing on local storage if fallback is used
+    const parsed = JSON.parse(local) as HomepageAd[];
+    let changed = false;
+    const updated = parsed.map(ad => {
+      if (ad.id === 'ad_inaugural' && (ad.imageUrl !== DEFAULT_HOMEPAGE_ADS[0].imageUrl || ad.title !== DEFAULT_HOMEPAGE_ADS[0].title || ad.linkUrl !== DEFAULT_HOMEPAGE_ADS[0].linkUrl)) {
+        changed = true;
+        return {
+          ...ad,
+          title: DEFAULT_HOMEPAGE_ADS[0].title,
+          imageUrl: DEFAULT_HOMEPAGE_ADS[0].imageUrl,
+          linkUrl: DEFAULT_HOMEPAGE_ADS[0].linkUrl,
+          description: DEFAULT_HOMEPAGE_ADS[0].description
+        };
+      }
+      return ad;
+    });
+    if (changed) {
+      localStorage.setItem('okorie_ads', JSON.stringify(updated));
+    }
+    return updated.filter(item => !getDeletedIds().includes(item.id));
+  }
+};
+
+export const addHomepageAd = async (ad: Omit<HomepageAd, 'id'>): Promise<HomepageAd> => {
+  try {
+    const docRef = await addDoc(collection(db, 'homepage_ads'), ad);
+    const newAd = { id: docRef.id, ...ad };
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    localStorage.setItem('okorie_ads', JSON.stringify([newAd, ...local]));
+    return newAd;
+  } catch (error) {
+    console.warn("Firestore addHomepageAd failed, performing local:", error);
+    const id = 'local_ad_' + Date.now();
+    const newAd = { id, ...ad };
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    localStorage.setItem('okorie_ads', JSON.stringify([newAd, ...local]));
+    return newAd;
+  }
+};
+
+export const deleteHomepageAd = async (id: string): Promise<void> => {
+  addDeletedId(id);
+  try {
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'homepage_ads', id);
+      await deleteDoc(docRef);
+    }
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    const updated = local.filter(a => a.id !== id);
+    localStorage.setItem('okorie_ads', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore deleteHomepageAd failed, doing local deletion:", error);
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    const updated = local.filter(a => a.id !== id);
+    localStorage.setItem('okorie_ads', JSON.stringify(updated));
+  }
+};
+
+export const toggleHomepageAdStatus = async (id: string, isActive: boolean): Promise<void> => {
+  try {
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'homepage_ads', id);
+      await updateDoc(docRef, { isActive });
+    }
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    const updated = local.map(a => a.id === id ? { ...a, isActive } : a);
+    localStorage.setItem('okorie_ads', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore updateDoc for homepage_ads failed, updating local:", error);
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    const updated = local.map(a => a.id === id ? { ...a, isActive } : a);
+    localStorage.setItem('okorie_ads', JSON.stringify(updated));
+  }
+};
+
+export const updateHomepageAd = async (id: string, ad: Omit<HomepageAd, 'id'>): Promise<void> => {
+  try {
+    if (!id.startsWith('local_')) {
+      const docRef = doc(db, 'homepage_ads', id);
+      await updateDoc(docRef, { ...ad });
+    }
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    const updated = local.map(a => a.id === id ? { ...a, ...ad } : a);
+    localStorage.setItem('okorie_ads', JSON.stringify(updated));
+  } catch (error) {
+    console.warn("Firestore updateHomepageAd failed, updating local:", error);
+    const local: HomepageAd[] = JSON.parse(localStorage.getItem('okorie_ads') || '[]');
+    const updated = local.map(a => a.id === id ? { ...a, ...ad } : a);
+    localStorage.setItem('okorie_ads', JSON.stringify(updated));
+  }
 };
